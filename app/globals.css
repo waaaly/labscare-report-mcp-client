@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 236 100% 97%;
+    --foreground: 188 65% 20%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 188 65% 20%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 188 65% 20%;
+    
+    --primary: 188 91% 36%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 188 88% 53%;
+    --secondary-foreground: 188 65% 20%;
+    
+    --muted: 180 5% 96%;
+    --muted-foreground: 188 15% 40%;
+    
+    --accent: 159 95% 31%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 180 5% 90%;
+    --input: 180 5% 90%;
+    --ring: 188 91% 36%;
+    
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 188 65% 10%;
+    --foreground: 236 100% 97%;
+    
+    --card: 188 65% 12%;
+    --card-foreground: 236 100% 97%;
+    
+    --popover: 188 65% 12%;
+    --popover-foreground: 236 100% 97%;
+    
+    --primary: 188 88% 53%;
+    --primary-foreground: 188 65% 20%;
+    
+    --secondary: 188 91% 36%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 188 65% 15%;
+    --muted-foreground: 188 15% 60%;
+    
+    --accent: 159 95% 31%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 188 65% 20%;
+    --input: 188 65% 20%;
+    --ring: 188 88% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Noto Sans', system-ui, sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Figtree', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lab {
+  id                String   @id @default(cuid())
+  name              String
+  domain            String?
+  version           String   @default("1.0.0")
+  fieldMappings     Json     @default("{}")
+  extractionRules   Json     @default("{}")
+  sampleFilters     Json     @default("{}")
+  promptTemplates   Json     @default("{}")
+  knowledgeBase     Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  projects          Project[]
+  members           LabMember[]
+  
+  @@index([name])
+}
+
+model LabMember {
+  id        String   @id @default(cuid())
+  labId     String
+  userId    String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+  
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  
+  @@unique([labId, userId])
+  @@index([userId])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  labId       String
+  name        String
+  description String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  documents   Document[]
+  schemas     Schema[]
+  scripts     Script[]
+  
+  @@index([labId])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  type        String
+  url         String?
+  content     Json?
+  annotations Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+}
+
+model Schema {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  definition  Json
+  version     String   @default("1.0.0")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+}
+
+model Script {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  code        String   @db.Text
+  status      String   @default("DRAFT")
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+}
