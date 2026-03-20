@@ -19,6 +19,9 @@ export default function LabSwitcher() {
   const { currentLab, labs, switchLab, setLabs, isLoading } = useLabStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [labName, setLabName] = useState('');
+  const [labDomain, setLabDomain] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     fetchLabs();
@@ -41,6 +44,41 @@ export default function LabSwitcher() {
 
   const handleLabChange = (labId: string) => {
     switchLab(labId);
+  };
+
+  const handleCreateLab = async () => {
+    if (!labName.trim()) {
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const response = await fetch('/api/labs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: labName,
+          domain: labDomain || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const newLab = await response.json();
+        setLabs([...labs, newLab]);
+        switchLab(newLab.id);
+        setIsDialogOpen(false);
+        setLabName('');
+        setLabDomain('');
+      } else {
+        console.error('Failed to create lab');
+      }
+    } catch (error) {
+      console.error('Failed to create lab:', error);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const filteredLabs = labs.filter((lab) =>
@@ -101,13 +139,27 @@ export default function LabSwitcher() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Lab Name</label>
-              <Input placeholder="Enter lab name..." />
+              <Input 
+                placeholder="Enter lab name..." 
+                value={labName}
+                onChange={(e) => setLabName(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain (Optional)</label>
-              <Input placeholder="e.g., clinical, research, testing" />
+              <Input 
+                placeholder="e.g., clinical, research, testing" 
+                value={labDomain}
+                onChange={(e) => setLabDomain(e.target.value)}
+              />
             </div>
-            <Button className="w-full">Create Lab</Button>
+            <Button 
+              className="w-full" 
+              onClick={handleCreateLab}
+              disabled={isCreating || !labName.trim()}
+            >
+              {isCreating ? 'Creating...' : 'Create Lab'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -22,7 +22,7 @@ export default function ProjectsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading projects...</div>
+        <div className="text-muted-foreground">Loading+{currentLab?.name}+ projects...</div>
       </div>
     );
   }
