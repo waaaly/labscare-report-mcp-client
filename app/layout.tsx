@@ -5,6 +5,7 @@ import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { KeyboardShortcuts } from '@/components/layout/keyboard-shortcuts';
 import { Toaster } from 'sonner';
+import { I18nProvider } from '@/lib/i18n/provider';
 
 const figtree = Figtree({
   subsets: ['latin'],
@@ -31,17 +32,19 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${figtree.variable} ${notoSans.variable} font-sans antialiased`}>
-        <KeyboardShortcuts />
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Header />
-            <main className="flex-1 overflow-auto bg-muted/20 p-6">
-              {children}
-            </main>
+        <I18nProvider>
+          <KeyboardShortcuts />
+          <div className="flex h-screen overflow-hidden">
+            <Sidebar />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <Header />
+              <main className="flex-1 overflow-auto bg-muted/20 p-6">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
-        <Toaster position="top-right" />
+          <Toaster position="top-right" />
+        </I18nProvider>
       </body>
     </html>
   );

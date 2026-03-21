@@ -7,8 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { FolderKanban, FileText, Database, Plus, Clock, TrendingUp, FlaskConical } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 
 export default function DashboardPage() {
+  const { t } = useTranslation('dashboard');
+  const { t: tCommon } = useTranslation('common');
   const { currentLab, isLoading: labLoading } = useLabStore();
   const { projects, loadProjects, isLoading: projectsLoading } = useProjectStore();
 
@@ -26,7 +29,7 @@ export default function DashboardPage() {
   if (labLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">{tCommon('loading')}</div>
       </div>
     );
   }
@@ -35,8 +38,8 @@ export default function DashboardPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <FlaskConical className="h-16 w-16 text-muted-foreground" />
-        <h2 className="text-2xl font-semibold">No Lab Selected</h2>
-        <p className="text-muted-foreground">Please select or create a lab to get started</p>
+        <h2 className="text-2xl font-semibold">{t('noLabSelected')}</h2>
+        <p className="text-muted-foreground">{t('selectOrCreateLab')}</p>
       </div>
     );
   }
@@ -45,15 +48,15 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground">
-            Welcome to {currentLab.name} • Version {currentLab.version}
+            {t('welcomeTo')} {currentLab.name} • {t('version')} {currentLab.version}
           </p>
         </div>
         <Link href="/projects/new">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            New Project
+            {t('newProject')}
           </Button>
         </Link>
       </div>
@@ -61,28 +64,28 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('totalProjects')}</CardTitle>
             <FolderKanban className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalProjects}</div>
             <p className="text-xs text-muted-foreground">
               <TrendingUp className="mr-1 h-3 w-3 inline" />
-              Active projects
+              {t('activeProjects')}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Documents</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('documents')}</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalDocuments}</div>
             <p className="text-xs text-muted-foreground">
               <Clock className="mr-1 h-3 w-3 inline" />
-              Uploaded documents
+              {t('uploadedDocuments')}
             </p>
           </CardContent>
         </Card>
@@ -96,7 +99,7 @@ export default function DashboardPage() {
             <div className="text-2xl font-bold">{totalSchemas}</div>
             <p className="text-xs text-muted-foreground">
               <Database className="mr-1 h-3 w-3 inline" />
-              Defined schemas
+              {t('definedSchemas')}
             </p>
           </CardContent>
         </Card>
@@ -110,7 +113,7 @@ export default function DashboardPage() {
             <div className="text-2xl font-bold">{totalScripts}</div>
             <p className="text-xs text-muted-foreground">
               <FileText className="mr-1 h-3 w-3 inline" />
-              Generated scripts
+              {t('generatedScripts')}
             </p>
           </CardContent>
         </Card>
@@ -119,13 +122,13 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Recent Projects</CardTitle>
-            <CardDescription>Your most recent projects</CardDescription>
+            <CardTitle>{t('recentProjects')}</CardTitle>
+            <CardDescription>{t('yourMostRecentProjects')}</CardDescription>
           </CardHeader>
           <CardContent>
             {projects.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No projects yet. Create your first project to get started.
+                {t('noProjectsYet')}
               </div>
             ) : (
               <div className="space-y-4">
@@ -143,8 +146,8 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       <div className="text-right text-sm text-muted-foreground">
-                        <div>{project.documents?.length ?? 0} docs</div>
-                        <div>{project.schemas?.length ?? 0} schemas</div>
+                        <div>{project.documents?.length ?? 0} {t('docs')}</div>
+                        <div>{project.schemas?.length ?? 0} {t('schemas')}</div>
                       </div>
                     </div>
                   </Link>
@@ -156,39 +159,39 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Knowledge Base</CardTitle>
-            <CardDescription>Current lab knowledge base status</CardDescription>
+            <CardTitle>{t('knowledgeBase')}</CardTitle>
+            <CardDescription>{t('currentLabKnowledgeBaseStatus')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Field Mappings</span>
+                <span className="text-sm font-medium">{t('fieldMappings')}</span>
                 <span className="text-sm text-muted-foreground">
-                  {Object.keys(currentLab.fieldMappings || {}).length} defined
+                  {Object.keys(currentLab.fieldMappings || {}).length} {t('defined')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Extraction Rules</span>
+                <span className="text-sm font-medium">{t('extractionRules')}</span>
                 <span className="text-sm text-muted-foreground">
-                  {Object.keys(currentLab.extractionRules || {}).length} defined
+                  {Object.keys(currentLab.extractionRules || {}).length} {t('defined')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Sample Filters</span>
+                <span className="text-sm font-medium">{t('sampleFilters')}</span>
                 <span className="text-sm text-muted-foreground">
-                  {Object.keys(currentLab.sampleFilters || {}).length} defined
+                  {Object.keys(currentLab.sampleFilters || {}).length} {t('defined')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Prompt Templates</span>
+                <span className="text-sm font-medium">{t('promptTemplates')}</span>
                 <span className="text-sm text-muted-foreground">
-                  {Object.keys(currentLab.promptTemplates || {}).length} defined
+                  {Object.keys(currentLab.promptTemplates || {}).length} {t('defined')}
                 </span>
               </div>
               <div className="pt-4 border-t">
                 <Link href="/knowledge">
                   <Button variant="outline" className="w-full">
-                    Manage Knowledge Base
+                    {t('manageKnowledgeBase')}
                   </Button>
                 </Link>
               </div>

@@ -17,21 +17,25 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: FlaskConical },
-  { name: 'Projects', href: '/projects', icon: FolderKanban },
-  { name: 'Documents', href: '/documents', icon: FileText },
-  { name: 'LIMS Data', href: '/lims', icon: Database },
-  { name: 'Scripts', href: '/scripts', icon: Code },
-  { name: 'Knowledge', href: '/knowledge', icon: BookOpen },
-  { name: 'Settings', href: '/settings', icon: Settings },
-  { name: 'Members', href: '/members', icon: Users },
+const getNavigation = (t: (key: string) => string) => [
+  { name: t('dashboard'), href: '/dashboard', icon: FlaskConical },
+  { name: t('projects'), href: '/projects', icon: FolderKanban },
+  { name: t('documents'), href: '/documents', icon: FileText },
+  { name: t('lims'), href: '/lims', icon: Database },
+  { name: t('scripts'), href: '/scripts', icon: Code },
+  { name: t('knowledge'), href: '/knowledge', icon: BookOpen },
+  { name: t('settings'), href: '/settings', icon: Settings },
+  { name: t('members'), href: '/members', icon: Users },
 ];
 
 export function Sidebar() {
+  const { t } = useTranslation('navigation');
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+
+  const navigation = getNavigation(t);
 
   return (
     <div

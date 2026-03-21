@@ -4,6 +4,7 @@ import { FlaskConical, Search, Bell, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import LabSwitcher from './lab-switcher';
+import { LangSwitcher } from './lang-switcher';
 
 export function Header() {
   return (
@@ -26,6 +27,7 @@ export function Header() {
             className="w-64 pl-9"
           />
         </div>
+        <LangSwitcher />
         <Button variant="ghost" size="icon">
           <Bell className="h-5 w-5" />
         </Button>
