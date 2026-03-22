@@ -7,7 +7,7 @@
 .env
 # testing
 /coverage
-
+data/
 # next.js
 /.next/
 /out/

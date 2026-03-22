@@ -7,6 +7,15 @@ export interface CreateLabRequest {
   promptTemplates?: Record<string, unknown>;
 }
 
+export interface UpdateLabRequest {
+  id: string;
+  name?: string;
+  domain?: string;
+  version?: string;
+  account?: string;
+  token?: string;
+}
+
 export interface CreateProjectRequest {
   name: string;
   description?: string;

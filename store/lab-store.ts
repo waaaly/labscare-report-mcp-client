@@ -15,6 +15,7 @@ interface LabState {
   updateLabExtractionRules: (rules: ExtractionRule[]) => void;
   updateLabSampleFilters: (filters: SampleFilter[]) => void;
   updateLabPromptTemplates: (templates: PromptTemplate[]) => void;
+  updateLab: (labData: Partial<Lab>) => Promise<boolean>;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -124,4 +125,36 @@ export const useLabStore = create<LabState>((set, get) => ({
   setLoading: (loading) => set({ isLoading: loading }),
 
   setError: (error) => set({ error }),
+
+  updateLab: async (labData) => {
+    const { currentLab } = get();
+    if (!currentLab) return false;
+
+    try {
+      const response = await fetch('/api/labs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentLab.id, ...labData }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update lab');
+      }
+
+      const updatedLab = await response.json();
+      
+      set((state) => ({
+        currentLab: updatedLab,
+        labs: state.labs.map((lab) => 
+          lab.id === updatedLab.id ? updatedLab : lab
+        ),
+      }));
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to update lab:', error);
+      set({ error: error instanceof Error ? error.message : 'Failed to update lab' });
+      return false;
+    }
+  },
 }));

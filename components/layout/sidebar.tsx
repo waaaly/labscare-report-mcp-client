@@ -41,7 +41,7 @@ export function Sidebar() {
     <div
       className={cn(
         'flex flex-col border-r bg-card transition-all duration-300',
-        collapsed ? 'w-16' : 'w-64'
+        collapsed ? 'w-16' : 'w-40'
       )}
     >
       <div className="flex h-16 items-center justify-between border-b px-4">

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { uploadFile } from '@/lib/minio';
 
 export async function POST(
   request: Request,
@@ -42,12 +43,14 @@ export async function POST(
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    const url = await uploadFile(file.name, buffer, file.type);
+
     const document = await prisma.document.create({
       data: {
         projectId,
         name: file.name,
         type: file.type,
-        content: buffer.toString('base64'),
+        url,
       },
     });
 

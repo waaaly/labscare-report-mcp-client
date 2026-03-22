@@ -1,19 +1,23 @@
 // lib/mcp/client.ts
 import {
   Client,
-} from '@modelcontextprotocol/sdk/client';
+} from '@modelcontextprotocol/sdk/client/index.js';
 import {
-  type CallToolResult,
-  type Resource,
-  type ListToolsResult,
-  type ListResourcesResult,
-
-} from "@modelcontextprotocol/sdk/types.js";
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { logger } from '../logger';           // 项目已有的 logger.ts
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type {
+  CallToolResult,
+  Resource,
+  ListToolsResult,
+  ListResourcesResult,
+} from '@modelcontextprotocol/sdk/types.js';
+import {
+  LoggingMessageNotificationSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import { logger } from '../logger';
 
 // ====================== 配置 ======================
+// StreamableHTTP 端点是 /mcp，不是旧 SSE 模式的 /mcp/sse
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:8000/mcp';
 
 if (!MCP_SERVER_URL) {
@@ -22,97 +26,143 @@ if (!MCP_SERVER_URL) {
 
 // ====================== 单例缓存 ======================
 let mcpClientInstance: Client | null = null;
-let currentTransport: StreamableHTTPClientTransport | SSEClientTransport | null = null;
+let currentTransport: StreamableHTTPClientTransport | null = null;
+let isConnecting = false;
 
 /**
- * 获取已连接的 MCP Client（全局单例，自动重连）
+ * 获取已连接的 MCP Client（全局单例，断线自动清理）
  */
-export async function getMcpClient(): Promise<Client> {
-  if (mcpClientInstance) {
-    return mcpClientInstance;
-  }
+export async function getMcpClient(
+  onLog?: (level: string, message: string) => void  // 新增可选回调
+): Promise<Client> {
+  if (mcpClientInstance) return mcpClientInstance;
 
-  logger.info('🔌 初始化 MCP Client...', { url: MCP_SERVER_URL });
-
-  const client = new Client(
-    {
-      name: 'labscare-report-mcp-client',
-      version: '1.0.0',
-    },
-    {
-      // 可选：声明客户端能力（未来扩展采样、提示等）
-      capabilities: {},
+  if (isConnecting) {
+    while (isConnecting) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (mcpClientInstance) return mcpClientInstance;
     }
-  );
-
-  // 优先尝试现代 Streamable HTTP（官方推荐）
-  let transport: StreamableHTTPClientTransport | SSEClientTransport;
-  try {
-    transport = new StreamableHTTPClientTransport(new URL(MCP_SERVER_URL));
-    await client.connect(transport);
-    logger.info('✅ MCP Client 已通过 StreamableHTTP 连接成功');
-  } catch (err) {
-    logger.warn('StreamableHTTP 连接失败，降级使用 SSE', { error: (err as Error).message });
-    transport = new SSEClientTransport(new URL(MCP_SERVER_URL));
-    await client.connect(transport);
-    logger.info('✅ MCP Client 已通过 SSE 连接成功');
   }
 
-  mcpClientInstance = client;
-  currentTransport = transport;
+  isConnecting = true;
 
-  // 可选：优雅关闭（开发时热重载友好）
-  process.on('SIGTERM', async () => {
-    await closeMcpClient();
-  });
+  try {
+    const client = new Client(
+      { name: 'labscare-report-mcp-client', version: '1.0.0' },
+      { capabilities: {} }
+    );
 
-  return client;
+    const transport = new StreamableHTTPClientTransport(new URL(MCP_SERVER_URL));
+
+    client.onclose = () => {
+      logger.warn('⚠️ MCP 连接已断开，下次调用将自动重连');
+      mcpClientInstance = null;
+      currentTransport = null;
+    };
+
+    client.onerror = (error: Error) => {
+      logger.error('❌ MCP 传输层错误:', error);
+    };
+
+    await client.connect(transport);
+
+    // 注册服务端日志通知监听
+    client.setNotificationHandler(
+      LoggingMessageNotificationSchema,  // SDK 内置 schema
+      (notification) => {
+        const level = notification.params.level;
+        const data = notification.params.data;
+        const message = typeof data === 'string' ? data : JSON.stringify(data);
+   
+        logger.info(`[MCP Server Log][${level}] ${message}`);
+        onLog?.(level, message);
+      }
+    );
+
+    logger.info('✅ MCP Client 连接成功 (Streamable HTTP)');
+
+    mcpClientInstance = client;
+    currentTransport = transport;
+    return client;
+  } catch (err) {
+    logger.error('❌ MCP 连接失败:', err);
+    throw err;
+  } finally {
+    isConnecting = false;
+  }
 }
 
 /**
- * 关闭 MCP 连接（清理资源）
+ * 关闭 MCP 连接
+ * 规范要求：先 terminateSession() 通知 server，再 client.close()
  */
 export async function closeMcpClient(): Promise<void> {
-  if (mcpClientInstance) {
-    try {
-      await mcpClientInstance.close();
-      if (currentTransport && 'terminateSession' in currentTransport) {
-        await (currentTransport as any).terminateSession?.();
-      }
-      logger.info('🛑 MCP Client 已优雅关闭');
-    } catch (err) {
-      logger.error('关闭 MCP Client 失败', { error: err });
+  const transport = currentTransport;
+  const client = mcpClientInstance;
+
+  // 先清空单例，防止关闭期间并发调用
+  mcpClientInstance = null;
+  currentTransport = null;
+
+  if (!client) return;
+
+  try {
+    // 1. 通知 server 终止 session（v1.x StreamableHTTPClientTransport 支持）
+    if (transport && typeof (transport as any).terminateSession === 'function') {
+      await (transport as any).terminateSession();
     }
-    mcpClientInstance = null;
-    currentTransport = null;
+    // 2. 关闭本地连接
+    await client.close();
+    logger.info('🛑 MCP Client 已优雅关闭');
+  } catch (err) {
+    logger.error('关闭 MCP Client 失败', { error: err });
   }
 }
 
-// ====================== 常用工具封装（推荐使用这些） ======================
+// ====================== 常用工具封装 ======================
 
 /**
- * 调用 Tool（最常用）
+ * 调用 Tool
+ *
+ * v1.x callTool 签名：
+ *   callTool(params, resultSchema?, options?)
+ *   - 第二个参数是 ResultSchema（不需要时传 undefined）
+ *   - 第三个参数才是 RequestOptions（含 onprogress / timeout）
+ *
+ * 原代码把 options 错误地放在第二个位置，导致实际上没有生效。
  */
 export async function callMcpTool<T = any>(
   name: string,
   argumentsObj: Record<string, any> = {},
   options?: {
     onProgress?: (progress: number, total?: number) => void;
+    onLog?: (level: string, message: string) => void;  // 新增
     timeout?: number;
   }
 ): Promise<T> {
   const client = await getMcpClient();
 
+  // 每次调用前更新日志回调
+  if (options?.onLog) {
+    client.setNotificationHandler(
+      LoggingMessageNotificationSchema,
+      (notification) => {
+        const level = notification.params.level;
+        const data = notification.params.data;
+        const message = typeof data === 'string' ? data : JSON.stringify(data);
+        options.onLog!(level, message);
+      }
+    );
+  }
+
   try {
     const result = await client.callTool(
-      {
-        name,
-        arguments: argumentsObj,
-      },
+      { name, arguments: argumentsObj },
       undefined,
       {
         onprogress: options?.onProgress
-          ? (progress) => options.onProgress!(progress.progress, progress.total)
+          ? ({ progress, total }: { progress: number; total?: number }) =>
+              options.onProgress!(progress, total)
           : undefined,
         timeout: options?.timeout ?? 120_000,
       }
@@ -131,7 +181,7 @@ export async function callMcpTool<T = any>(
 }
 
 /**
- * 读取 Resource（知识库、配置等）
+ * 读取 Resource
  */
 export async function readMcpResource(uri: string): Promise<{ [x: string]: any & Resource }[]> {
   const client = await getMcpClient();
@@ -155,6 +205,6 @@ export async function listMcpResources(): Promise<ListResourcesResult> {
   return await client.listResources({});
 }
 
-// ====================== 类型导出（方便其他文件 import） ======================
+// ====================== 类型导出 ======================
 export type { CallToolResult, Resource };
-export { Client } from '@modelcontextprotocol/sdk/client';
+export { Client } from '@modelcontextprotocol/sdk/client/index.js';

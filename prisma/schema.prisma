@@ -10,7 +10,9 @@ datasource db {
 model Lab {
   id                String   @id @default(cuid())
   name              String
-  domain            String?
+  domain            String
+  account           String    @default("")
+  token             String    @default("")
   version           String   @default("1.0.0")
   fieldMappings     Json     @default("{}")
   extractionRules   Json     @default("{}")

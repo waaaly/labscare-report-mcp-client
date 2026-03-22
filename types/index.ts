@@ -1,7 +1,9 @@
 export interface Lab {
   id: string;
   name: string;
-  domain?: string;
+  domain: string;
+  account:string;
+  token:string;
   version: string;
   fieldMappings: FieldMapping[];
   extractionRules: ExtractionRule[];

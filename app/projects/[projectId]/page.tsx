@@ -131,78 +131,6 @@ export default function ProjectWorkspacePage() {
             </p>
           </div>
         </div>
-        {/* <div className="flex gap-2">
-          <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Document11
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Upload Document</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="file">Select File</Label>
-                  <Input
-                    id="file"
-                    type="file"
-                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    onChange={handleFileSelect}
-                    disabled={isUploading}
-                    className="cursor-pointer"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Supported formats: PDF, DOC, DOCX (Max 10MB)
-                  </p>
-                </div>
-
-                {selectedFile && (
-                  <div className="p-3 rounded-lg bg-accent">
-                    <p className="text-sm font-medium">{selectedFile.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024).toFixed(2)} KB
-                    </p>
-                  </div>
-                )}
-
-                {uploadError && (
-                  <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                    {uploadError}
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleUpload}
-                    disabled={isUploading || !selectedFile}
-                    className="flex-1 cursor-pointer"
-                  >
-                    {isUploading ? 'Uploading...' : 'Upload'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsUploadDialogOpen(false);
-                      setSelectedFile(null);
-                      setUploadError('');
-                    }}
-                    disabled={isUploading}
-                    className="flex-1 cursor-pointer"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Button>
-            <Play className="mr-2 h-4 w-4" />
-            Run Script
-          </Button>
-        </div> */}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -211,17 +139,17 @@ export default function ProjectWorkspacePage() {
             <FileText className="mr-2 h-4 w-4" />
             Documents
           </TabsTrigger>
+           <TabsTrigger value="lims">
+            <Database className="mr-2 h-4 w-4" />
+            Mapping 
+          </TabsTrigger>
           <TabsTrigger value="mapping">
             <FileText className="mr-2 h-4 w-4" />
-            Mapping
+            LIMS Data
           </TabsTrigger>
           <TabsTrigger value="schema">
             <Database className="mr-2 h-4 w-4" />
             Schema
-          </TabsTrigger>
-          <TabsTrigger value="lims">
-            <Database className="mr-2 h-4 w-4" />
-            LIMS Data
           </TabsTrigger>
           <TabsTrigger value="script">
             <FileCode className="mr-2 h-4 w-4" />
