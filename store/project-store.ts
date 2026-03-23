@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Project, Document, Schema, Script } from '@/types';
+import { Project, Document, Schema, Script, PipelineStatus, PipelineStep, PipelineStepStatus } from '@/types';
 
 interface ProjectState {
   currentProject: Project | null;
@@ -31,6 +31,9 @@ interface ProjectState {
   setError: (error: string | null) => void;
   loadProjects: (labId: string) => Promise<void>;
   loadProject: (projectId: string, labId: string) => Promise<void>;
+  updateDocumentPipelineStatus: (documentId: string, step: PipelineStep, status: PipelineStepStatus) => void;
+  setDocumentPipelineStatus: (documentId: string, status: PipelineStatus) => void;
+  getDocumentPipelineStatus: (documentId: string) => PipelineStatus | undefined;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -141,5 +144,75 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  updateDocumentPipelineStatus: (documentId, step, status) =>
+    set((state) => ({
+      documents: state.documents.map((doc) => {
+        if (doc.id === documentId) {
+          const currentStatus = doc.pipelineStatus || {
+            document: 'completed',
+            mapping: 'pending',
+            lims: 'pending',
+            schema: 'pending',
+            script: 'pending',
+            debug: 'pending',
+          };
+          return {
+            ...doc,
+            pipelineStatus: {
+              ...currentStatus,
+              [step]: status,
+            },
+          };
+        }
+        return doc;
+      }),
+      currentProject: state.currentProject?.documents
+        ? {
+            ...state.currentProject,
+            documents: state.currentProject.documents.map((doc) => {
+              if (doc.id === documentId) {
+                const currentStatus = doc.pipelineStatus || {
+                  document: 'completed',
+                  mapping: 'pending',
+                  lims: 'pending',
+                  schema: 'pending',
+                  script: 'pending',
+                  debug: 'pending',
+                };
+                return {
+                  ...doc,
+                  pipelineStatus: {
+                    ...currentStatus,
+                    [step]: status,
+                  },
+                };
+              }
+              return doc;
+            }),
+          }
+        : state.currentProject,
+    })),
+
+  setDocumentPipelineStatus: (documentId, status) =>
+    set((state) => ({
+      documents: state.documents.map((doc) =>
+        doc.id === documentId ? { ...doc, pipelineStatus: status } : doc
+      ),
+      currentProject: state.currentProject?.documents
+        ? {
+            ...state.currentProject,
+            documents: state.currentProject.documents.map((doc) =>
+              doc.id === documentId ? { ...doc, pipelineStatus: status } : doc
+            ),
+          }
+        : state.currentProject,
+    })),
+
+  getDocumentPipelineStatus: (documentId) => {
+    const state = get();
+    const document = state.documents.find((d) => d.id === documentId);
+    return document?.pipelineStatus;
   },
 }));

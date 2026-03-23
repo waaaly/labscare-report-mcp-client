@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@modelcontextprotocol/sdk'],
+  serverExternalPackages: ['libreoffice-convert'], 
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

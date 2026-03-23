@@ -33,10 +33,28 @@ export interface Document {
   name: string;
   type: string;
   url?: string;
+  cover?:string;
+  pdf?:string;
   content?: Record<string, unknown>;
   annotations: Record<string, unknown>;
+  pipelineStatus?: PipelineStatus;
+  hasIndependentPipeline?: boolean;
+  hasUniqueSchemaAndScript?: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type PipelineStep = 'document' | 'mapping' | 'lims' | 'schema' | 'script' | 'debug';
+
+export type PipelineStepStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface PipelineStatus {
+  document: PipelineStepStatus;
+  mapping: PipelineStepStatus;
+  lims: PipelineStepStatus;
+  schema: PipelineStepStatus;
+  script: PipelineStepStatus;
+  debug: PipelineStepStatus;
 }
 
 export interface Schema {

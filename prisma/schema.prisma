@@ -64,11 +64,12 @@ model Document {
   name        String
   type        String
   url         String?
+  cover       String?
+  pdf         String?
   content     Json?
   annotations Json     @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
   @@index([projectId])

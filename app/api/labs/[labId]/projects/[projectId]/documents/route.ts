@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { uploadFile } from '@/lib/minio';
+import { uploadFile, uploadCoverImage,deleteFile } from '@/lib/minio';
+import { processDocument } from '@/lib/document-converter';
 
 export async function POST(
   request: Request,
@@ -43,7 +44,17 @@ export async function POST(
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    const { pdfBuffer, coverBuffer } = await processDocument(buffer, file.type, file.name);
+
     const url = await uploadFile(file.name, buffer, file.type);
+    const pdfFileName = file.name.replace(/\.(doc|docx)$/i, '.pdf');
+    const pdf = await uploadFile('pdf/'+pdfFileName, pdfBuffer, 'application/pdf');
+
+    let coverUrl = null;
+    if (coverBuffer) {
+      const coverFileName = `${file.name.replace(/\.[^.]+$/, '')}_cover.jpg`;
+      coverUrl = await uploadFile('cover/'+coverFileName, coverBuffer, 'image/jpeg');
+    }
 
     const document = await prisma.document.create({
       data: {
@@ -51,6 +62,8 @@ export async function POST(
         name: file.name,
         type: file.type,
         url,
+        pdf,
+        cover: coverUrl,
       },
     });
 
@@ -82,6 +95,50 @@ export async function GET(
     console.error('Failed to fetch documents:', error);
     return NextResponse.json(
       { error: 'Failed to fetch documents' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ projectId: string, documentId: string }> }
+) {
+  try {
+    const { projectId, documentId } = await context.params;
+    await prisma.document.delete({
+      where: {
+        id: documentId,
+        projectId,
+      },
+    });
+    //同时删除minio上的文件
+    const document = await prisma.document.findUnique({
+      where: {
+        id: documentId,
+        projectId,
+      },
+    });
+    if (document?.url) {
+      const fileName = document.url.split('/').pop();
+      if (fileName) {
+        await deleteFile(fileName)
+      }
+    }
+    if (document?.cover) {
+      const coverFileName = document.cover.split('/').pop();
+      if (coverFileName) {
+       await deleteFile(coverFileName)
+      }
+    }
+    return NextResponse.json(
+      { message: 'Document deleted successfully' },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Failed to delete document:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete document' },
       { status: 500 }
     );
   }

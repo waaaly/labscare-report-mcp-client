@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<string[]>([]);
   
@@ -75,6 +76,35 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+  const handleTest = async () => {
+    setIsTesting(true);
+    try {
+      const response = await fetch(`${formData.domain}/api/web/user/token-login/v1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'token': formData.token,
+        },
+        body: JSON.stringify({
+          token: formData.token,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.code === 1 && data.status === 200) {
+        toast.success(data.messages || '连接测试成功');
+      } else {
+        toast.error(data.messages || '连接测试失败');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '连接测试失败';
+      toast.error(errorMessage);
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -153,10 +183,16 @@ export default function SettingsPage() {
                 onChange={(e) => setFormData({ ...formData, version: e.target.value })}
               />
             </div>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('save')}
-            </Button>
+            <div className="flex justify-end gap-2">
+              <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('save')}
+              </Button>
+              <Button onClick={handleTest} variant="outline" disabled={isTesting}>
+                {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                测试连接
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
