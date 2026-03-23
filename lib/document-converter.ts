@@ -10,7 +10,8 @@ const { promisify } = nativeRequire('node:util');
 const path = nativeRequire('node:path');
 
 const convert = promisify(convertWithOptions);
-const sofficePath = path.resolve('D:/Program Files/LibreOffice/program/soffice.exe');
+//‘D:/Program Files/LibreOffice/program/soffice.exe'
+const sofficePath = path.resolve('C:/Program Files/LibreOffice/program/soffice.exe');
 export async function convertToPdf(buffer: Buffer, originalType: string): Promise<Buffer> {
 
   if (originalType === 'application/pdf') {
@@ -31,38 +32,16 @@ export async function convertToPdf(buffer: Buffer, originalType: string): Promis
 
 export async function generateCoverImage(pdfBuffer: Buffer, fileName: string): Promise<Buffer> {
   try {
+    // 1. 加载 PDF 文档句柄
     const document = await pdf(pdfBuffer, { scale: 2 });
-    let jpgBuffer
-    // 获取第一页的迭代器
-    jpgBuffer = await sharp(document[0])
-      .resize(400)
-      .webp({ quality: 80 })
+
+    // 2. 获取具体某一页的 Buffer (注意：pageNumber 通常从 1 开始)
+    const firstPageBuffer = await document.getPage(1);
+
+    // 3. 将该页 Buffer 传给 Sharp 进行转换
+    const jpgBuffer = await sharp(firstPageBuffer)
+      .jpeg({ quality: 90 })
       .toBuffer();
-    // for await (const page of document) {
-    //   // page 是一个图片的 Buffer (通常是 PNG)
-    //   // 使用 sharp 进行二次压缩，转为 webp 存入 Minio
-    //   jpgBuffer = await sharp(document[0])
-    //     .resize(400)
-    //     .webp({ quality: 80 })
-    //     .toBuffer();
-    // }
-    // const os = require('os');
-    // const path = require('path');
-    // const fs = require('fs');
-
-    // const tempDir = os.tmpdir();
-    // const tempPdfPath = path.join(tempDir, `${fileName}-${Date.now()}.pdf`);
-    // const tempJpgPath = path.join(tempDir, `${fileName}-${Date.now()}.jpg`);
-
-    // fs.writeFileSync(tempPdfPath, pdfBuffer);
-
-    // await execAsync(`convert -density 150 "${tempPdfPath}[0]" -quality 90 -strip "${tempJpgPath}"`);
-
-    // let jpgBuffer = fs.readFileSync(tempJpgPath);
-
-    // fs.unlinkSync(tempPdfPath);
-    // fs.unlinkSync(tempJpgPath);
-
     const optimizedJpg = await sharp(jpgBuffer)
       .resize(400, 600, {
         fit: 'inside',

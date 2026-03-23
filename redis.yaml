@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      # Windows 路径映射，使用正斜杠防止转义错误
+      - D:/docker/redis/conf/redis.conf:/etc/redis/redis.conf
+      - D:/docker/redis/data:/data
+    command: redis-server /etc/redis/redis.conf
+    environment:
+      - TZ=Asia/Shanghai
