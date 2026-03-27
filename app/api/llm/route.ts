@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLlmClient, chatCompletion, closeLlmClient } from '@/lib/llm/client';
+import { agent } from '@/lib/llm/reactAgent';
+import { BytesOutputParser } from "@langchain/core/output_parsers";
+import { llm } from '@/lib/llm/reactAgent'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type="openai", model='gpt-5.1', messages, temperature=0.7, maxTokens=1024 } = body;
+    const { type = "openai", model = 'GLM-4.7', messages, temperature = 0.7, maxTokens = 1024 } = body;
 
     if (!type || !model || !messages) {
       return NextResponse.json(
@@ -12,21 +15,31 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    // 注意：Agent 返回的是消息对象流，我们需要解析出文本部分
+    const eventStream = await agent.stream(
+      { messages },
+      { streamMode: "messages" } // 2026 推荐模式：按消息增量流式传输
+    );
 
-    // 创建 LLM 客户端
-    const client = await createLlmClient({ type, model });
-
-    // 调用聊天完成
-    const response = await chatCompletion({
-      messages,
-      temperature,
-      maxTokens,
+    // E. 构建符合前端打字机效果的 ReadableStream
+    const runtimeStream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        for await (const [message, metadata] of eventStream) {
+          // 只将 AI 回复的内容（Content）发送给前端
+          if (message.content && typeof message.content === 'string') {
+            controller.enqueue(encoder.encode(message.content));
+          }
+        }
+        controller.close();
+      },
     });
 
-    // 关闭客户端
-    await closeLlmClient();
+    return new Response(runtimeStream, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
 
-    return NextResponse.json({ response });
+
   } catch (error) {
     console.error('LLM API error:', error);
     return NextResponse.json(

@@ -70,7 +70,7 @@ export async function createLlmClient({
         apiKey,
         baseURL: baseURL || 'https://api.openai.com/v1',
       });
-      logger.info(`✅ OpenAI Client 创建成功 (模型: ${model})`);
+      logger.info(`✅ OpenAI Client 创建成功 baseURL: ${baseURL} (模型: ${model})`);
     } else if (type === 'anthropic') {
       apiKey = process.env.ANTHROPIC_API_KEY || '';
       baseURL = process.env.ANTHROPIC_BASE_URL;

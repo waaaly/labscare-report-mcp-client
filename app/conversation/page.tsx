@@ -13,12 +13,10 @@ export default function LLMConversationPage() {
     role: 'user' | 'assistant';
     content: string;
   }>>([]);
-  
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [modelType, setModelType] = useState<'openai' | 'anthropic'>('openai');
-  const [model, setModel] = useState('gpt-4');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -32,12 +30,13 @@ export default function LLMConversationPage() {
   const handleSend = useCallback(async () => {
     if (!input.trim()) return;
 
-    // 添加用户消息
+    // 1. 先把用户消息加入列表，并给 AI 预留一个空消息位
     const userMessage = {
       role: 'user' as const,
       content: input.trim(),
     };
-    setMessages(prev => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages([...newMessages, { role: 'assistant' as const, content: "" }]);
     setInput('');
     setIsLoading(true);
 
@@ -49,10 +48,7 @@ export default function LLMConversationPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          type: modelType,
-          model,
-          messages: [...messages, userMessage],
-          temperature: 0.7,
+          messages: newMessages,
         }),
       });
 
@@ -60,26 +56,43 @@ export default function LLMConversationPage() {
         throw new Error('API request failed');
       }
 
-      const data = await response.json();
+      if (!response.body) {
+        throw new Error('No response body');
+      }
 
-      // 添加助手消息
-      const assistantMessage = {
-        role: 'assistant' as const,
-        content: data.response,
-      };
-      setMessages(prev => [...prev, assistantMessage]);
+      // 2. 获取读取器
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantText = "";
+
+      // 3. 循环读取流块
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // 解码当前数据块（chunk）
+        const chunk = decoder.decode(value, { stream: true });
+        assistantText += chunk;
+
+        // 4. 实时更新最后一条消息（打字机效果核心）
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1].content = assistantText;
+          return updated;
+        });
+      }
     } catch (error) {
       console.error('Error sending message:', error);
-      // 添加错误消息
-      const errorMessage = {
-        role: 'assistant' as const,
-        content: 'Sorry, I encountered an error. Please try again.',
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      // 更新最后一条消息为错误信息
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1].content = 'Sorry, I encountered an error. Please try again.';
+        return updated;
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [input, messages, modelType, model]);
+  }, [input, messages,]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -97,38 +110,9 @@ export default function LLMConversationPage() {
             Chat with AI models
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={modelType} onValueChange={(value) => setModelType(value as 'openai' | 'anthropic')}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue placeholder="Model Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="openai">OpenAI</SelectItem>
-              <SelectItem value="anthropic">Anthropic</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Select value={model} onValueChange={setModel}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Model" />
-            </SelectTrigger>
-            <SelectContent defaultValue={modelType === 'openai' ? 'gpt-5.1' : 'claude-3-opus-20240229'}>
-              {modelType === 'openai' ? (
-                <>
-                  <SelectItem value="gpt-5.1">gpt-5.1</SelectItem>
-                </>
-              ) : (
-                <>
-                  <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
-                  <SelectItem value="claude-3-sonnet-20240229">Claude 3 Sonnet</SelectItem>
-                </>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
-      <Card className="h-[600px] flex flex-col">
+      <Card className="h-[800px] flex flex-col">
         <CardHeader>
           <CardTitle>Chat</CardTitle>
         </CardHeader>

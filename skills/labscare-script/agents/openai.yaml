@@ -1,0 +1,4 @@
+interface:
+  display_name: "LabsCare Report Script"
+  short_description: "从模板图和结果图反推 LabsCare 报表 JS"
+  default_prompt: "Use $labscare-script to infer a LabsCare report JS from template images, expected output images, placeholder notes, and optional JSON data."

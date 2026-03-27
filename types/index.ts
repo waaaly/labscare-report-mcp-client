@@ -35,6 +35,8 @@ export interface Document {
   url?: string;
   cover?:string;
   pdf?:string;
+  status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  taskId?: string;
   content?: Record<string, unknown>;
   annotations: Record<string, unknown>;
   pipelineStatus?: PipelineStatus;
