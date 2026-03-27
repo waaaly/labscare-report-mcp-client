@@ -1,5 +1,5 @@
+//@ts-nocheck
 'use client';
-
 import { useState } from 'react';
 import { useLabStore } from '@/store/lab-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

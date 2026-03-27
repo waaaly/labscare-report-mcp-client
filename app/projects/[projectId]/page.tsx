@@ -95,12 +95,23 @@ export default function ProjectWorkspacePage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
         setIsUploadDialogOpen(false);
         setSelectedFile(null);
-        if (currentLab?.id) {
-          await loadProject(projectId, currentLab.id);
-        }
-        toast.success('Document uploaded successfully');
+        
+        // 显示正在处理的 toast
+        toast.info('Document is being processed in background...');
+        setDocuments([...documents, data]);
+        setSelectedDocumentId(data.documentId);
+        // 刷新文档列表
+        // if (currentLab?.id) {
+        //   await loadProject(projectId, currentLab.id);
+        // }
+        
+        // // 立即选择刚上传的文档
+        // if (data.documentId) {
+        //   setSelectedDocumentId(data.documentId);
+        // }
       } else {
         const data = await response.json();
         setUploadError(data.error || 'Failed to upload document');
@@ -342,9 +353,25 @@ export default function ProjectWorkspacePage() {
                             <p className="text-sm font-medium text-gray-900 truncate" title={doc.name}>
                               {doc.name}
                             </p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(doc.createdAt).toLocaleDateString('zh-CN')}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-gray-500">
+                                {new Date(doc.createdAt).toLocaleDateString('zh-CN')}
+                              </p>
+                              {doc.status && (
+                                <span className={cn(
+                                  "text-xs px-2 py-0.5 rounded-full",
+                                  doc.status === 'COMPLETED' && "bg-green-100 text-green-800",
+                                  doc.status === 'PROCESSING' && "bg-blue-100 text-blue-800",
+                                  doc.status === 'PENDING' && "bg-yellow-100 text-yellow-800",
+                                  doc.status === 'FAILED' && "bg-red-100 text-red-800"
+                                )}>
+                                  {doc.status === 'COMPLETED' && 'Completed'}
+                                  {doc.status === 'PROCESSING' && 'Processing'}
+                                  {doc.status === 'PENDING' && 'Pending'}
+                                  {doc.status === 'FAILED' && 'Failed'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <Button
