@@ -27,7 +27,7 @@ const getNavigation = (t: (key: string) => string) => [
   { name: t('scripts'), href: '/scripts', icon: Code },
   { name: t('knowledge'), href: '/knowledge', icon: BookOpen },
   { name: t('settings'), href: '/settings', icon: Settings },
-  { name: t('members'), href: '/members', icon: Users },
+  { name: t('conversation'), href: '/conversation', icon: Users },
 ];
 
 export function Sidebar() {
