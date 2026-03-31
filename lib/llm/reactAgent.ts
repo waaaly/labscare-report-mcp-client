@@ -1,7 +1,12 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { loadKnowledgeSkill } from "./skill-loader";
 import * as path from 'path';
+import { setGlobalDispatcher, ProxyAgent } from "undici";
+// 1. 设置全局代理（替换为你的魔法端口，如 7890 或 1080）
+const proxyAgent = new ProxyAgent("http://127.0.0.1:7897");
+setGlobalDispatcher(proxyAgent);
 
 // 1. 初始化 LLM qwen/qwen3-coder:free
 // export const llm = new ChatOpenAI({ 
@@ -13,7 +18,7 @@ const llm = new ChatOpenAI({
   // 1. 填入 OpenRouter 的 API Key
   openAIApiKey: process.env.OPENAI_API_KEY || "", 
   // 3. 填入 OpenRouter 支持的模型 ID（例如 deepseek/deepseek-chat 或 openai/gpt-4o）
-  modelName: "deepseek/deepseek-r1:free",//openrouter/free", 
+  modelName: "qwen/qwen3.6-plus-preview:free",//openrouter/free", 
   maxRetries: 3,
   timeout: 120000,
   // 2. 指定 OpenRouter 的基础地址
@@ -26,6 +31,18 @@ const llm = new ChatOpenAI({
     },
   },
 });
+
+// const llm = new ChatGoogleGenerativeAI({
+//   apiKey: process.env.GOOGLE_API_KEY,        // 你的 Google AI Studio API Key
+//   model: "gemini-2.5-flash-lite",                 // ← 关键：改成 model（不是 modelName）
+//   temperature: 0.1,                          // 报表脚本建议低温度，提高确定性
+//   maxOutputTokens: 8192,                     // 根据需要调整
+//   // 可选推荐参数
+//   maxRetries: 5,
+//   streaming: true,
+  
+// });
+
 const skillPath = path.join(process.cwd(), 'skills', 'labscare-script');
 // 2. 准备工具（就是你上一步加载的那个）
 const labscareTool = await loadKnowledgeSkill(skillPath);

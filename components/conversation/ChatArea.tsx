@@ -331,6 +331,7 @@ function VirtualizedMessages({
   const [viewportH, setViewportH] = React.useState(0);
   const [scrollTop, setScrollTop] = React.useState(0);
   const [containerW, setContainerW] = React.useState(0);
+  const [measuredMap, setMeasuredMap] = React.useState<Map<number, number>>(new Map());
   const onScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     setScrollTop(el.scrollTop);
@@ -355,7 +356,7 @@ function VirtualizedMessages({
   const overscanPx = 400;
   const virtualizationEnabled = messages.length > 120 && containerW > 0;
   const fontInfo = React.useMemo(() => {
-    const dummy = document.body;
+    const dummy = window.document.body;
     const cs = window.getComputedStyle(dummy);
     const fs = cs.fontSize || '14px';
     const ff = cs.fontFamily || 'Inter, ui-sans-serif, system-ui';
@@ -381,6 +382,11 @@ function VirtualizedMessages({
     const arr: number[] = [];
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
+      const measured = measuredMap.get(i);
+      if (measured != null) {
+        arr.push(measured);
+        continue;
+      }
       const key = `${m.role}|${bubbleWidth}|${m.content}`;
       let h = measureCache.current.get(key);
       if (h == null) {
@@ -393,7 +399,7 @@ function VirtualizedMessages({
       arr.push(h);
     }
     return arr;
-  }, [messages, bubbleWidth, plain, fontInfo, virtualizationEnabled]);
+  }, [messages, bubbleWidth, plain, fontInfo, virtualizationEnabled, measuredMap]);
   if (!virtualizationEnabled) {
     return (
       <div ref={containerRef} className="h-full overflow-auto space-y-4" onScroll={onScroll}>
@@ -456,9 +462,29 @@ function VirtualizedMessages({
         <div style={{ height: topPad }} />
         {messages.slice(start, end).map((message, i) => {
           const index = start + i;
+          const assignRef = (el: HTMLDivElement | null) => {
+            if (!el) return;
+            // 首帧校准：仅对未测量或高度变化较大的项进行写入
+            requestAnimationFrame(() => {
+              const rect = el.getBoundingClientRect();
+              let actual = rect.height;
+              if (!Number.isFinite(actual) || actual <= 0) return;
+              // space-y-4 的间距不在元素高度内，对非首项补偿 16px
+              if (index > 0) actual += 16;
+              const actualRounded = Math.ceil(actual);
+              setMeasuredMap(prev => {
+                const prevVal = prev.get(index);
+                if (prevVal != null && Math.abs(prevVal - actualRounded) <= 2) return prev;
+                const next = new Map(prev);
+                next.set(index, actualRounded);
+                return next;
+              });
+            });
+          };
           return (
             <div
               key={index}
+              ref={assignRef}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
