@@ -1,0 +1,497 @@
+'use client';
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import React from 'react';
+import { prepare, layout } from '@chenglou/pretext';
+
+type Msg = {
+  role: 'user' | 'assistant';
+  content: string;
+  isStreaming?: boolean;
+};
+
+type Props = {
+  title?: string;
+  messages: Msg[];
+  isLoading: boolean;
+  input: string;
+  onInputChange: (v: string) => void;
+  onSend: () => void;
+  onKeyPress: (e: React.KeyboardEvent) => void;
+  messagesEndRef: React.RefObject<HTMLDivElement>;
+  onFilesChange?: (files: File[]) => void;
+  onSendFiles?: (files: File[]) => void;
+};
+
+export default function ChatArea({
+  title = 'Chat',
+  messages,
+  isLoading,
+  input,
+  onInputChange,
+  onSend,
+  onKeyPress,
+  messagesEndRef,
+  onFilesChange,
+  onSendFiles,
+}: Props) {
+  const [attachments, setAttachments] = React.useState<{ file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const addFiles = React.useCallback((files: FileList | File[]) => {
+    const list = Array.from(files);
+    const next: { file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[] = [];
+    const textForPreview: File[] = [];
+    for (const f of list) {
+      const isImg = f.type.startsWith('image/');
+      const isJson = f.type === 'application/json' || f.name.toLowerCase().endsWith('.json');
+      const isMd = f.type === 'text/markdown' || f.name.toLowerCase().endsWith('.md');
+      if (!isImg && !isJson && !isMd) continue;
+      next.push({
+        file: f,
+        type: isImg ? 'image' : isJson ? 'json' : 'md',
+        preview: isImg ? URL.createObjectURL(f) : undefined,
+        previewText: undefined
+      });
+      if (isJson || isMd) textForPreview.push(f);
+    }
+    if (next.length > 0) {
+      setAttachments(prev => {
+        const merged = [...prev, ...next];
+        onFilesChange?.(merged.map(i => i.file));
+        return merged;
+      });
+      if (textForPreview.length > 0) {
+        textForPreview.forEach(async (tf) => {
+          try {
+            const raw = await tf.text();
+            let pretty = raw;
+            const isLikelyJson = tf.type === 'application/json' || tf.name.toLowerCase().endsWith('.json');
+            if (isLikelyJson) {
+              try {
+                const parsed = JSON.parse(raw);
+                pretty = JSON.stringify(parsed, null, 2);
+              } catch {}
+            }
+            const snippet = pretty.slice(0, 600);
+            setAttachments(prev =>
+              prev.map(att => att.file === tf ? { ...att, previewText: snippet } : att)
+            );
+          } catch {}
+        });
+      }
+    }
+  }, [onFilesChange]);
+  const removeAttachment = React.useCallback((idx: number) => {
+    setAttachments(prev => {
+      const copy = [...prev];
+      const [removed] = copy.splice(idx, 1);
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      onFilesChange?.(copy.map(i => i.file));
+      return copy;
+    });
+  }, [onFilesChange]);
+  const handleFileChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addFiles(e.target.files);
+    e.currentTarget.value = '';
+  }, [addFiles]);
+  const handleDrop = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files);
+    }
+  }, [addFiles]);
+  const handleDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  }, []);
+  const handleSendClick = React.useCallback(() => {
+    const files = attachments.map(a => a.file);
+    if (files.length > 0) {
+      onSendFiles?.(files);
+    }
+    onSend();
+    if (attachments.length > 0) {
+      setAttachments(prev => {
+        prev.forEach(i => i.preview && URL.revokeObjectURL(i.preview));
+        return [];
+      });
+      onFilesChange?.([]);
+    }
+  }, [onSend, onSendFiles, attachments, onFilesChange]);
+  const handlePaste = React.useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind === 'file') {
+          const f = it.getAsFile();
+          if (f && f.type.startsWith('image/')) {
+            files.push(f);
+          }
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        addFiles(files);
+      }
+    },
+    [addFiles]
+  );
+  const visibleMessages = React.useMemo(
+    () =>
+      messages.filter(
+        (m) => !(m.role === 'assistant' && m.isStreaming && !m.content?.trim())
+      ),
+    [messages]
+  );
+  const history = React.useMemo(() => {
+    const arr = messages
+      .filter((m) => m.role === 'user' && m.content?.trim())
+      .map((m) => m.content.trim());
+    const seen = new Set<string>();
+    const uniq: string[] = [];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const v = arr[i];
+      if (!seen.has(v)) {
+        seen.add(v);
+        uniq.push(v);
+      }
+    }
+    return uniq;
+  }, [messages]);
+  const [historyIndex, setHistoryIndex] = React.useState<number | null>(null);
+  const draftRef = React.useRef<string>('');
+  const handleHistoryKey = React.useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (history.length === 0) return;
+      const el = e.currentTarget;
+      const caretStart = el.selectionStart ?? 0;
+      const caretEnd = el.selectionEnd ?? 0;
+      const atStart = caretStart === 0 && caretEnd === 0;
+      const atEnd = caretStart === el.value.length && caretEnd === el.value.length;
+      if (e.key === 'ArrowUp' && (atStart || !el.value)) {
+        e.preventDefault();
+        if (historyIndex === null) {
+          draftRef.current = el.value;
+          setHistoryIndex(0);
+          onInputChange(history[0] ?? '');
+        } else if (historyIndex + 1 < history.length) {
+          const nextIdx = historyIndex + 1;
+          setHistoryIndex(nextIdx);
+          onInputChange(history[nextIdx]);
+        }
+      } else if (e.key === 'ArrowDown' && (atEnd || !el.value)) {
+        e.preventDefault();
+        if (historyIndex === null) return;
+        if (historyIndex > 0) {
+          const nextIdx = historyIndex - 1;
+          setHistoryIndex(nextIdx);
+          onInputChange(history[nextIdx]);
+        } else {
+          setHistoryIndex(null);
+          onInputChange(draftRef.current);
+        }
+      }
+    },
+    [history, historyIndex, onInputChange]
+  );
+  return (
+    <Card className="h-full flex flex-col">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 overflow-auto">
+        <VirtualizedMessages
+          messages={visibleMessages}
+          isLoading={isLoading}
+          messagesEndRef={messagesEndRef}
+        />
+      </CardContent>
+      <div className="p-4 border-t">
+        <div className="flex items-end">
+          <div className="flex-1">
+            <div
+              className="relative rounded-lg border bg-background transition-shadow focus-within:ring-2 focus-within:ring-primary"
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+            >
+              {attachments.length > 0 && (
+                <div className="px-3 pt-3 pb-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-auto pr-1">
+                    {attachments.map((att, idx) => (
+                      <Card key={idx} className="relative overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(idx)}
+                          className="absolute right-1 top-1 rounded bg-background/80 hover:bg-background p-1"
+                          aria-label="Remove attachment"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        <CardHeader className="py-2 pr-6">
+                          <CardTitle className="text-xs font-medium truncate">{att.file.name}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pb-2">
+                          {att.type === 'image' ? (
+                            att.preview ? (
+                              <img src={att.preview} alt={att.file.name} className="h-24 w-full object-cover rounded" />
+                            ) : (
+                              <div className="h-24 w-full flex items-center justify-center text-muted-foreground">
+                                <ImageIcon className="h-5 w-5" />
+                              </div>
+                            )
+                          ) : (
+                            <div className="h-24 w-full overflow-auto rounded bg-muted/60 p-2 text-[10px] leading-snug">
+                              {att.previewText ? (
+                                <pre className="whitespace-pre-wrap">{att.previewText}</pre>
+                              ) : (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <FileIcon className="h-4 w-4" />
+                                  <span>Loading preview…</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="mt-2 text-[10px] text-muted-foreground">
+                            {(att.file.size / 1024).toFixed(1)} KB
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <Textarea
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                onKeyPress={onKeyPress}
+                onKeyDown={handleHistoryKey}
+                onPaste={handlePaste}
+                placeholder="Type your message..."
+                className="min-h-[72px] w-full resize-none border-0 bg-transparent px-3 py-3 pr-24 pb-12 shadow-none focus-visible:ring-0"
+                rows={3}
+              />
+              <div className="absolute right-2 bottom-2 flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/json,text/markdown,.md"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <Button
+                  size="icon"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-9 w-9 rounded-full"
+                  aria-label="Attach files"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  onClick={handleSendClick}
+                  disabled={isLoading || (!input.trim() && attachments.length === 0)}
+                  className="h-9 w-9 rounded-full"
+                  aria-label="Send message"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function VirtualizedMessages({
+  messages,
+  isLoading,
+  messagesEndRef,
+}: {
+  messages: Msg[];
+  isLoading: boolean;
+  messagesEndRef: React.RefObject<HTMLDivElement>;
+}) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [viewportH, setViewportH] = React.useState(0);
+  const [scrollTop, setScrollTop] = React.useState(0);
+  const [containerW, setContainerW] = React.useState(0);
+  const onScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    setScrollTop(el.scrollTop);
+  }, []);
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setViewportH(el.clientHeight);
+      setContainerW(el.clientWidth);
+    });
+    ro.observe(el);
+    setViewportH(el.clientHeight);
+    setContainerW(el.clientWidth);
+    const handler = () => setScrollTop(el.scrollTop);
+    el.addEventListener('scroll', handler);
+    return () => {
+      ro.disconnect();
+      el.removeEventListener('scroll', handler);
+    };
+  }, []);
+  const overscanPx = 400;
+  const virtualizationEnabled = messages.length > 120 && containerW > 0;
+  const fontInfo = React.useMemo(() => {
+    const dummy = document.body;
+    const cs = window.getComputedStyle(dummy);
+    const fs = cs.fontSize || '14px';
+    const ff = cs.fontFamily || 'Inter, ui-sans-serif, system-ui';
+    const lhStr = cs.lineHeight || '20px';
+    const lh = Number.parseFloat(lhStr) || 20;
+    return { font: `${fs} ${ff}`, lineHeight: lh };
+  }, []);
+  const measureCache = React.useRef<Map<string, number>>(new Map());
+  const bubbleWidth = React.useMemo(() => {
+    const maxW = Math.max(80, Math.floor(containerW * 0.8));
+    const contentW = Math.max(40, maxW - 32); // p-x 16*2
+    return contentW;
+  }, [containerW]);
+  const plain = React.useCallback((s: string) => {
+    return s
+      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, '').trim())
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/[#>*_~\-]+/g, '')
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+  }, []);
+  const itemHeights = React.useMemo(() => {
+    if (!virtualizationEnabled) return messages.map(() => 0);
+    const arr: number[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      const key = `${m.role}|${bubbleWidth}|${m.content}`;
+      let h = measureCache.current.get(key);
+      if (h == null) {
+        const txt = plain(m.content || '');
+        const prepared = prepare(txt, fontInfo.font, { whiteSpace: 'pre-wrap' });
+        const { height } = layout(prepared, bubbleWidth, fontInfo.lineHeight);
+        h = Math.ceil(height + 32 /* p-y */ + 16 /* gap */);
+        measureCache.current.set(key, h);
+      }
+      arr.push(h);
+    }
+    return arr;
+  }, [messages, bubbleWidth, plain, fontInfo, virtualizationEnabled]);
+  if (!virtualizationEnabled) {
+    return (
+      <div ref={containerRef} className="h-full overflow-auto space-y-4" onScroll={onScroll}>
+        {messages.map((message, index) => (
+          <div
+            key={index}
+            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            <div
+              className={`max-w-[80%] p-4 rounded-lg ${
+                message.role === 'user'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
+              }`}
+            >
+              {message.role === 'assistant' ? (
+                message.isStreaming ? (
+                  <pre className="whitespace-pre-wrap">{message.content}</pre>
+                ) : (
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                )
+              ) : (
+                message.content
+              )}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-[80%] p-4 rounded-lg bg-muted flex items-center">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span>Thinking...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+    );
+  }
+  const cumulative: number[] = [];
+  let sum = 0;
+  for (const h of itemHeights) {
+    cumulative.push(sum);
+    sum += h;
+  }
+  const totalH = sum;
+  const fromY = Math.max(0, scrollTop - overscanPx);
+  const toY = Math.min(totalH, scrollTop + viewportH + overscanPx);
+  let start = 0;
+  while (start < cumulative.length && cumulative[start] + itemHeights[start] < fromY) start++;
+  let end = start;
+  while (end < cumulative.length && cumulative[end] < toY) end++;
+  const topPad = cumulative[start] || 0;
+  let renderedH = 0;
+  for (let i = start; i < end; i++) renderedH += itemHeights[i];
+  const bottomPad = Math.max(0, totalH - topPad - renderedH);
+  return (
+    <div ref={containerRef} className="h-full overflow-auto" onScroll={onScroll}>
+      <div className="space-y-4">
+        <div style={{ height: topPad }} />
+        {messages.slice(start, end).map((message, i) => {
+          const index = start + i;
+          return (
+            <div
+              key={index}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[80%] p-4 rounded-lg ${
+                  message.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted'
+                }`}
+              >
+                {message.role === 'assistant' ? (
+                  message.isStreaming ? (
+                    <pre className="whitespace-pre-wrap">{message.content}</pre>
+                  ) : (
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                  )
+                ) : (
+                  message.content
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ height: bottomPad }} />
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-[80%] p-4 rounded-lg bg-muted flex items-center">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span>Thinking...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+    </div>
+  );
+}

@@ -5,10 +5,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import LabSwitcher from './lab-switcher';
 import { LangSwitcher } from './lang-switcher';
+import { useEffect, useRef } from 'react';
 
 export function Header() {
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const update = () => {
+      const h = ref.current?.offsetHeight ?? 64;
+      document.documentElement.style.setProperty('--header-h', `${h}px`);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-background px-6">
+    <header ref={ref} className="flex h-16 items-center justify-between border-b bg-background px-6">
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
           <FlaskConical className="h-6 w-6 text-primary" />

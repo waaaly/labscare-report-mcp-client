@@ -1,6 +1,7 @@
 import { DOCUMENT_STATUS_PREFIX } from "@/lib/redis/client";
 import Redis from "ioredis";
-export async function GET(req: Request, context: { params: Promise<{ projectId: string, documentId: string }> }) {
+import type { NextRequest } from "next/server";
+export async function GET(req: NextRequest, context: { params: Promise<{ documentId: string }> }) {
     const { documentId } = await context.params
     // 1. 必须使用独立的临时连接，严禁使用全局单例
     const redisSubClient = new Redis({

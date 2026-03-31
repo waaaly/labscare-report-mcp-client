@@ -2,10 +2,29 @@ import { ChatOpenAI } from "@langchain/openai";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { loadKnowledgeSkill } from "./skill-loader";
 import * as path from 'path';
-// 1. 初始化 LLM
-export const llm = new ChatOpenAI({ 
-  modelName: "GLM-4.7", // 确保模型支持 Tool Calling
-  temperature: 0 
+
+// 1. 初始化 LLM qwen/qwen3-coder:free
+// export const llm = new ChatOpenAI({ 
+//   modelName: "qwen/qwen3-coder:free", // 确保模型支持 Tool Calling
+//   temperature: 0 
+// });
+
+const llm = new ChatOpenAI({
+  // 1. 填入 OpenRouter 的 API Key
+  openAIApiKey: process.env.OPENAI_API_KEY || "", 
+  // 3. 填入 OpenRouter 支持的模型 ID（例如 deepseek/deepseek-chat 或 openai/gpt-4o）
+  modelName: "deepseek/deepseek-r1:free",//openrouter/free", 
+  maxRetries: 3,
+  timeout: 120000,
+  // 2. 指定 OpenRouter 的基础地址
+  configuration: {
+    baseURL: process.env.OPENAI_API_BASE_URL || "https://openrouter.ai",
+    // 如果你在非浏览器环境下运行，通常需要添加以下 Header 以符合 OpenRouter 的规范
+    defaultHeaders: {
+      "HTTP-Referer": "http://localhost:8081", // 必须提供
+      "X-Title": "LabFlow MCP Stdio",           // 建议提供
+    },
+  },
 });
 const skillPath = path.join(process.cwd(), 'skills', 'labscare-script');
 // 2. 准备工具（就是你上一步加载的那个）
