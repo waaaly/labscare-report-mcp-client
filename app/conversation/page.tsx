@@ -13,8 +13,8 @@ interface Message {
 
 export default function LLMConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [input, setInput] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [conversations, setConversations] = useState<{ id: string; title: string; createdAt: number }[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
@@ -52,7 +52,7 @@ export default function LLMConversationPage() {
     if (listRaw) {
       try {
         list = JSON.parse(listRaw);
-      } catch {}
+      } catch { }
     }
     if (!list || list.length === 0) {
       const id = Math.random().toString(36).slice(2);
@@ -78,14 +78,14 @@ export default function LLMConversationPage() {
     if (!currentId) return;
     try {
       localStorage.setItem(msgKey(currentId), JSON.stringify(messages));
-    } catch {}
+    } catch { }
   }, [messages, currentId, msgKey]);
 
   useEffect(() => {
     try {
       localStorage.setItem(LS_CONV_LIST, JSON.stringify(conversations));
       if (currentId) localStorage.setItem(LS_CUR_ID, currentId);
-    } catch {}
+    } catch { }
   }, [conversations, currentId]);
 
   const createNewConversation = useCallback(() => {
@@ -98,7 +98,7 @@ export default function LLMConversationPage() {
     setInput('');
     try {
       localStorage.setItem(msgKey(id), JSON.stringify([]));
-    } catch {}
+    } catch { }
   }, [conversations, msgKey]);
 
   const selectConversation = useCallback((id: string) => {
@@ -114,49 +114,41 @@ export default function LLMConversationPage() {
     setInput('');
   }, [currentId, msgKey]);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() && selectedFiles.length === 0) return;
+  const handleSend = useCallback(async (inputText: string) => {
+    // console.log('handleSend', inputText, selectedFiles);
+    if (!inputText.trim() && selectedFiles.length === 0) return;
 
     const userMessage: Message = {
       role: 'user',
-      content: input.trim(),
+      content: inputText.trim(),
     };
-    const newMessages = !input.trim()
+    const newMessages = !inputText.trim()
       ? [...messages]
       : [...messages, userMessage];
     setMessages([...newMessages, { role: 'assistant', content: "", isStreaming: true }]);
-    if (input.trim()) setInput('');
+    if (inputText.trim()) setInput('');
     setIsLoading(true);
-    if (input.trim()) addLog(input.trim());
+    if (inputText.trim()) addLog(inputText.trim());
     if (selectedFiles.length > 0) {
       addLog(`Files: ${selectedFiles.map(f => f.name).join(', ')}`);
     }
 
     try {
       let response: Response;
+      const formData = new FormData();
+      formData.append('prompt', input.trim());
+      formData.append('contextJson', JSON.stringify({ conversationId: currentId, messagesCount: newMessages.length }));
+      formData.append('messagesJson', JSON.stringify(newMessages));
       if (selectedFiles.length > 0) {
-        const formData = new FormData();
-        formData.append('prompt', input.trim());
-        formData.append('contextJson', JSON.stringify({ conversationId: currentId, messagesCount: newMessages.length }));
-        formData.append('messagesJson', JSON.stringify(newMessages));
         selectedFiles.forEach((file) => {
           formData.append('files', file);
         });
-        response = await fetch('/api/llm', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        response = await fetch('/api/llm', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messages: newMessages,
-          }),
-        });
       }
+      response = await fetch('/api/llm', {
+        method: 'POST',
+        body: formData,
+      });
+
 
       if (!response.ok) {
         throw new Error('API request failed');
@@ -267,13 +259,6 @@ export default function LLMConversationPage() {
     }
   }, [addLog]);
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
-
   return (
     <div className="flex gap-4 h-[calc(100vh-var(--header-h,10rem))] overflow-hidden bg-background">
       <div className="w-[260px] h-full border-r flex-shrink-0">
@@ -290,9 +275,7 @@ export default function LLMConversationPage() {
           messages={messages}
           isLoading={isLoading}
           input={input}
-          onInputChange={setInput}
           onSend={handleSend}
-          onKeyPress={handleKeyPress}
           messagesEndRef={messagesEndRef}
           onSendFiles={handleSendFiles}
         />

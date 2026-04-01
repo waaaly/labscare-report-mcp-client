@@ -4,24 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import React from 'react';
-import { prepare, layout } from '@chenglou/pretext';
+import React, { useEffect } from 'react';
+import { VirtualizedMessages, Msg } from './VirtualizedMessages';
 
-type Msg = {
-  role: 'user' | 'assistant';
-  content: string;
-  isStreaming?: boolean;
-};
 
 type Props = {
   title?: string;
   messages: Msg[];
   isLoading: boolean;
   input: string;
-  onInputChange: (v: string) => void;
-  onSend: () => void;
-  onKeyPress: (e: React.KeyboardEvent) => void;
+  onSend: (input: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   onFilesChange?: (files: File[]) => void;
   onSendFiles?: (files: File[]) => void;
@@ -32,15 +24,15 @@ export default function ChatArea({
   messages,
   isLoading,
   input,
-  onInputChange,
   onSend,
-  onKeyPress,
   messagesEndRef,
   onFilesChange,
   onSendFiles,
 }: Props) {
   const [attachments, setAttachments] = React.useState<{ file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [localInput, setLocalInput] = React.useState(input);
+
   const addFiles = React.useCallback((files: FileList | File[]) => {
     const list = Array.from(files);
     const next: { file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[] = [];
@@ -74,17 +66,18 @@ export default function ChatArea({
               try {
                 const parsed = JSON.parse(raw);
                 pretty = JSON.stringify(parsed, null, 2);
-              } catch {}
+              } catch { }
             }
             const snippet = pretty.slice(0, 600);
             setAttachments(prev =>
               prev.map(att => att.file === tf ? { ...att, previewText: snippet } : att)
             );
-          } catch {}
+          } catch { }
         });
       }
     }
   }, [onFilesChange]);
+
   const removeAttachment = React.useCallback((idx: number) => {
     setAttachments(prev => {
       const copy = [...prev];
@@ -94,25 +87,28 @@ export default function ChatArea({
       return copy;
     });
   }, [onFilesChange]);
+
   const handleFileChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) addFiles(e.target.files);
     e.currentTarget.value = '';
   }, [addFiles]);
+
   const handleDrop = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       addFiles(e.dataTransfer.files);
     }
   }, [addFiles]);
+
   const handleDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   }, []);
+
   const handleSendClick = React.useCallback(() => {
     const files = attachments.map(a => a.file);
     if (files.length > 0) {
       onSendFiles?.(files);
     }
-    onSend();
     if (attachments.length > 0) {
       setAttachments(prev => {
         prev.forEach(i => i.preview && URL.revokeObjectURL(i.preview));
@@ -120,7 +116,17 @@ export default function ChatArea({
       });
       onFilesChange?.([]);
     }
-  }, [onSend, onSendFiles, attachments, onFilesChange]);
+    onSend(localInput);
+    setLocalInput('');
+  }, [onSend, onSendFiles, localInput, setLocalInput, attachments, onFilesChange]);
+
+  const handleKeyPress = React.useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendClick();
+    }
+  }, [handleSendClick, localInput]);
+
   const handlePaste = React.useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const items = e.clipboardData?.items;
@@ -180,11 +186,11 @@ export default function ChatArea({
         if (historyIndex === null) {
           draftRef.current = el.value;
           setHistoryIndex(0);
-          onInputChange(history[0] ?? '');
+          setLocalInput(history[0] ?? '');
         } else if (historyIndex + 1 < history.length) {
           const nextIdx = historyIndex + 1;
           setHistoryIndex(nextIdx);
-          onInputChange(history[nextIdx]);
+          setLocalInput(history[nextIdx]);
         }
       } else if (e.key === 'ArrowDown' && (atEnd || !el.value)) {
         e.preventDefault();
@@ -192,14 +198,14 @@ export default function ChatArea({
         if (historyIndex > 0) {
           const nextIdx = historyIndex - 1;
           setHistoryIndex(nextIdx);
-          onInputChange(history[nextIdx]);
+          setLocalInput(history[nextIdx]);
         } else {
           setHistoryIndex(null);
-          onInputChange(draftRef.current);
+          setLocalInput(draftRef.current);
         }
       }
     },
-    [history, historyIndex, onInputChange]
+    [history, historyIndex]
   );
   return (
     <Card className="h-full flex flex-col">
@@ -268,9 +274,9 @@ export default function ChatArea({
                 </div>
               )}
               <Textarea
-                value={input}
-                onChange={(e) => onInputChange(e.target.value)}
-                onKeyPress={onKeyPress}
+                value={localInput}
+                onChange={(e) => setLocalInput(e.target.value)}
+                onKeyPress={(e) => handleKeyPress(e)}
                 onKeyDown={handleHistoryKey}
                 onPaste={handlePaste}
                 placeholder="Type your message..."
@@ -299,7 +305,7 @@ export default function ChatArea({
                 <Button
                   size="icon"
                   onClick={handleSendClick}
-                  disabled={isLoading || (!input.trim() && attachments.length === 0)}
+                  disabled={isLoading || (!localInput.trim() && attachments.length === 0)}
                   className="h-9 w-9 rounded-full"
                   aria-label="Send message"
                 >
@@ -318,206 +324,3 @@ export default function ChatArea({
   );
 }
 
-function VirtualizedMessages({
-  messages,
-  isLoading,
-  messagesEndRef,
-}: {
-  messages: Msg[];
-  isLoading: boolean;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
-}) {
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [viewportH, setViewportH] = React.useState(0);
-  const [scrollTop, setScrollTop] = React.useState(0);
-  const [containerW, setContainerW] = React.useState(0);
-  const [measuredMap, setMeasuredMap] = React.useState<Map<number, number>>(new Map());
-  const onScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    setScrollTop(el.scrollTop);
-  }, []);
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setViewportH(el.clientHeight);
-      setContainerW(el.clientWidth);
-    });
-    ro.observe(el);
-    setViewportH(el.clientHeight);
-    setContainerW(el.clientWidth);
-    const handler = () => setScrollTop(el.scrollTop);
-    el.addEventListener('scroll', handler);
-    return () => {
-      ro.disconnect();
-      el.removeEventListener('scroll', handler);
-    };
-  }, []);
-  const overscanPx = 400;
-  const virtualizationEnabled = messages.length > 120 && containerW > 0;
-  const fontInfo = React.useMemo(() => {
-    const dummy = window.document.body;
-    const cs = window.getComputedStyle(dummy);
-    const fs = cs.fontSize || '14px';
-    const ff = cs.fontFamily || 'Inter, ui-sans-serif, system-ui';
-    const lhStr = cs.lineHeight || '20px';
-    const lh = Number.parseFloat(lhStr) || 20;
-    return { font: `${fs} ${ff}`, lineHeight: lh };
-  }, []);
-  const measureCache = React.useRef<Map<string, number>>(new Map());
-  const bubbleWidth = React.useMemo(() => {
-    const maxW = Math.max(80, Math.floor(containerW * 0.8));
-    const contentW = Math.max(40, maxW - 32); // p-x 16*2
-    return contentW;
-  }, [containerW]);
-  const plain = React.useCallback((s: string) => {
-    return s
-      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, '').trim())
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[#>*_~\-]+/g, '')
-      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
-  }, []);
-  const itemHeights = React.useMemo(() => {
-    if (!virtualizationEnabled) return messages.map(() => 0);
-    const arr: number[] = [];
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
-      const measured = measuredMap.get(i);
-      if (measured != null) {
-        arr.push(measured);
-        continue;
-      }
-      const key = `${m.role}|${bubbleWidth}|${m.content}`;
-      let h = measureCache.current.get(key);
-      if (h == null) {
-        const txt = plain(m.content || '');
-        const prepared = prepare(txt, fontInfo.font, { whiteSpace: 'pre-wrap' });
-        const { height } = layout(prepared, bubbleWidth, fontInfo.lineHeight);
-        h = Math.ceil(height + 32 /* p-y */ + 16 /* gap */);
-        measureCache.current.set(key, h);
-      }
-      arr.push(h);
-    }
-    return arr;
-  }, [messages, bubbleWidth, plain, fontInfo, virtualizationEnabled, measuredMap]);
-  if (!virtualizationEnabled) {
-    return (
-      <div ref={containerRef} className="h-full overflow-auto space-y-4" onScroll={onScroll}>
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[80%] p-4 rounded-lg ${
-                message.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
-            >
-              {message.role === 'assistant' ? (
-                message.isStreaming ? (
-                  <pre className="whitespace-pre-wrap">{message.content}</pre>
-                ) : (
-                  <ReactMarkdown>{message.content}</ReactMarkdown>
-                )
-              ) : (
-                message.content
-              )}
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[80%] p-4 rounded-lg bg-muted flex items-center">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              <span>Thinking...</span>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-    );
-  }
-  const cumulative: number[] = [];
-  let sum = 0;
-  for (const h of itemHeights) {
-    cumulative.push(sum);
-    sum += h;
-  }
-  const totalH = sum;
-  const fromY = Math.max(0, scrollTop - overscanPx);
-  const toY = Math.min(totalH, scrollTop + viewportH + overscanPx);
-  let start = 0;
-  while (start < cumulative.length && cumulative[start] + itemHeights[start] < fromY) start++;
-  let end = start;
-  while (end < cumulative.length && cumulative[end] < toY) end++;
-  const topPad = cumulative[start] || 0;
-  let renderedH = 0;
-  for (let i = start; i < end; i++) renderedH += itemHeights[i];
-  const bottomPad = Math.max(0, totalH - topPad - renderedH);
-  return (
-    <div ref={containerRef} className="h-full overflow-auto" onScroll={onScroll}>
-      <div className="space-y-4">
-        <div style={{ height: topPad }} />
-        {messages.slice(start, end).map((message, i) => {
-          const index = start + i;
-          const assignRef = (el: HTMLDivElement | null) => {
-            if (!el) return;
-            // 首帧校准：仅对未测量或高度变化较大的项进行写入
-            requestAnimationFrame(() => {
-              const rect = el.getBoundingClientRect();
-              let actual = rect.height;
-              if (!Number.isFinite(actual) || actual <= 0) return;
-              // space-y-4 的间距不在元素高度内，对非首项补偿 16px
-              if (index > 0) actual += 16;
-              const actualRounded = Math.ceil(actual);
-              setMeasuredMap(prev => {
-                const prevVal = prev.get(index);
-                if (prevVal != null && Math.abs(prevVal - actualRounded) <= 2) return prev;
-                const next = new Map(prev);
-                next.set(index, actualRounded);
-                return next;
-              });
-            });
-          };
-          return (
-            <div
-              key={index}
-              ref={assignRef}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] p-4 rounded-lg ${
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
-                }`}
-              >
-                {message.role === 'assistant' ? (
-                  message.isStreaming ? (
-                    <pre className="whitespace-pre-wrap">{message.content}</pre>
-                  ) : (
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
-                  )
-                ) : (
-                  message.content
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <div style={{ height: bottomPad }} />
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[80%] p-4 rounded-lg bg-muted flex items-center">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              <span>Thinking...</span>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-    </div>
-  );
-}

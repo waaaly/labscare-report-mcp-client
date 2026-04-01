@@ -53,60 +53,71 @@ export async function POST(request: NextRequest) {
               else if (m?.role === 'assistant') baseMessages.push(new AIMessage(m.content ?? ''));
             }
           }
-        } catch {}
+        } catch { }
       }
 
       const inputMessages = [...baseMessages, new HumanMessage({ content: messageContent })];
-      const eventStream = await agent.stream({ messages: inputMessages }, { streamMode: 'messages' });
+      const eventStream = await agent.stream({ messages: inputMessages }, { streamMode: ['messages', 'updates'] });
 
       const runtimeStream = new ReadableStream({
         async start(controller) {
           const encoder = new TextEncoder();
-          for await (const [message] of eventStream) {
-            if (message.content && typeof message.content === 'string') {
-              controller.enqueue(encoder.encode(message.content));
+
+          for await (const event of eventStream) {
+            // ==================== 处理 messages 模式 (最重要，用于实时输出) ====================
+            if (Array.isArray(event) && event.length === 2) {
+              const [streamMode, chunk] = event;   // 解构 streamMode 和 chunk
+
+              if (streamMode === "messages") {
+                // chunk 是 [messageChunk, metadata] 的 tuple
+                const [messageChunk, metadata] = chunk as [any, any];
+
+                // 1. 输出模型思考内容或最终答案
+                if (messageChunk?.content && typeof messageChunk.content === "string") {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({
+                      type: "content",
+                      text: messageChunk.content
+                    })}\n\n`)
+                  );
+                }
+
+                // 2. 输出 Tool Calling 过程（关键！让用户看到正在调用什么工具）
+                if (messageChunk?.tool_calls && messageChunk.tool_calls.length > 0) {
+                  messageChunk.tool_calls.forEach((tc: any) => {
+                    controller.enqueue(
+                      encoder.encode(`data: ${JSON.stringify({
+                        type: "tool_call",
+                        tool: tc.name,
+                        args: tc.args || {},
+                        message: `正在调用工具: ${tc.name}...`
+                      })}\n\n`)
+                    );
+                  });
+                }
+              }
+
+              // ==================== 处理 updates 模式 ====================
+              else if (streamMode === "updates") {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({
+                    type: "status",
+                    text: "工具执行完成，正在继续处理..."
+                  })}\n\n`)
+                );
+              }
             }
           }
+
+          // 流结束
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
           controller.close();
         },
       });
-
       return new Response(runtimeStream, {
         headers: { 'Content-Type': 'text/event-stream' },
       });
     }
-
-    // B. 兼容 JSON 请求（旧路径）
-    const body = await request.json();
-    const { type = "openai", model = 'GLM-4.7', messages, temperature = 0.7, maxTokens = 1024 } = body;
-
-    if (!type || !model || !messages) {
-      return NextResponse.json(
-        { error: 'Missing required parameters: type, model, messages' },
-        { status: 400 }
-      );
-    }
-    const eventStream = await agent.stream(
-      { messages },
-      { streamMode: "messages" } // 2026 推荐模式：按消息增量流式传输
-    );
-
-    const runtimeStream = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder();
-        for await (const [message, metadata] of eventStream) {
-          if (message.content && typeof message.content === 'string') {
-            controller.enqueue(encoder.encode(message.content));
-          }
-        }
-        controller.close();
-      },
-    });
-
-    return new Response(runtimeStream, {
-      headers: { "Content-Type": "text/event-stream" },
-    });
-
 
   } catch (error) {
     console.error('LLM API error:', error);
