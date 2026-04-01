@@ -9,6 +9,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  messageType?: 'thought' | 'tool_call' | 'status' | 'content';
 }
 
 export default function LLMConversationPage() {
@@ -21,8 +22,6 @@ export default function LLMConversationPage() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const bufferRef = useRef("");
-  const frameRef = useRef<number | null>(null);
 
   const scrollToBottom = useCallback((smooth = false) => {
     messagesEndRef.current?.scrollIntoView({
@@ -125,7 +124,7 @@ export default function LLMConversationPage() {
     const newMessages = !inputText.trim()
       ? [...messages]
       : [...messages, userMessage];
-    setMessages([...newMessages, { role: 'assistant', content: "", isStreaming: true }]);
+    setMessages(newMessages);
     if (inputText.trim()) setInput('');
     setIsLoading(true);
     if (inputText.trim()) addLog(inputText.trim());
@@ -138,7 +137,10 @@ export default function LLMConversationPage() {
       const formData = new FormData();
       formData.append('prompt', input.trim());
       formData.append('contextJson', JSON.stringify({ conversationId: currentId, messagesCount: newMessages.length }));
-      formData.append('messagesJson', JSON.stringify(newMessages));
+      const standardMessages = newMessages
+        .filter(msg => !msg.isStreaming && msg.content)
+        .map(msg => ({ role: msg.role, content: msg.content }));
+      formData.append('messagesJson', JSON.stringify(standardMessages));
       if (selectedFiles.length > 0) {
         selectedFiles.forEach((file) => {
           formData.append('files', file);
@@ -160,62 +162,79 @@ export default function LLMConversationPage() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      bufferRef.current = "";
+      let sseBuffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const bytes = value;
-        const SLICE = 50;
-        if (bytes && bytes.byteLength > SLICE) {
-          let i = 0;
-          const total = Math.ceil(bytes.byteLength / SLICE);
-          while (i < bytes.byteLength) {
-            const startTime = performance.now();
-            while (i < bytes.byteLength && performance.now() - startTime < 16) {
-              const sub = bytes.subarray(i, Math.min(i + SLICE, bytes.byteLength));
-              i += SLICE;
-              const piece = decoder.decode(sub, { stream: true });
-              bufferRef.current += piece;
-              addLog(`Chunk part ${Math.ceil(i / SLICE)}/${total} ${sub.byteLength}B`);
+        const chunk = decoder.decode(value, { stream: true });
+        sseBuffer += chunk;
+        
+        // 按行分割 SSE 消息
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || ''; // 保留未完成的行
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6); // 移除 'data: ' 前缀
+            if (data) {
+              setIsLoading(false);
+              try {
+                const json = JSON.parse(data);
+                if (json.type === 'content' && json.text) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.messageType === 'content' || (lastMsg?.role === 'assistant' && !lastMsg?.messageType)) {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text, messageType: 'content', isStreaming: true }];
+                    } else {
+                      return [...prev, { role: 'assistant', content: json.text, messageType: 'content', isStreaming: true }];
+                    }
+                  });
+                  addLog(`Content: ${json.text.slice(0, 50)}...`);
+                } else if (json.type === 'thought' && json.text) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.messageType === 'thought') {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text }];
+                    } else {
+                      return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true }];
+                    }
+                  });
+                  addLog(`Thought: ${json.text.slice(0, 50)}...`);
+                } else if (json.type === 'tool_call' && json.message) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.messageType === 'tool_call') {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.message }];
+                    } else {
+                      return [...prev, { role: 'assistant', content: json.message, messageType: 'tool_call', isStreaming: true }];
+                    }
+                  });
+                  addLog(`Tool Call: ${json.tool}`);
+                } else if (json.type === 'status' && json.text) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.messageType === 'status') {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text }];
+                    } else {
+                      return [...prev, { role: 'assistant', content: json.text, messageType: 'status', isStreaming: true }];
+                    }
+                  });
+                  addLog(`Status: ${json.text}`);
+                }
+              } catch (e) {
+                console.error('Error parsing SSE message:', e);
+              }
             }
-            if (!frameRef.current) {
-              frameRef.current = requestAnimationFrame(() => {
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1].content = bufferRef.current;
-                  return updated;
-                });
-                scrollToBottom(false);
-                frameRef.current = null;
-              });
-            }
-            await new Promise(requestAnimationFrame);
-          }
-        } else {
-          const chunk = decoder.decode(bytes, { stream: true });
-          bufferRef.current += chunk;
-          addLog(`Chunk ${bytes?.byteLength ?? 0}B`);
-          if (!frameRef.current) {
-            frameRef.current = requestAnimationFrame(() => {
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1].content = bufferRef.current;
-                return updated;
-              });
-              scrollToBottom(false);
-              frameRef.current = null;
-            });
           }
         }
-
+        
+        await new Promise(requestAnimationFrame);
       }
 
       setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1].isStreaming = false;
-        return updated;
+        return prev.map(msg => ({ ...msg, isStreaming: false }));
       });
       scrollToBottom(true);
       addLog('Completed');
@@ -230,18 +249,17 @@ export default function LLMConversationPage() {
     } catch (error) {
       console.error('Error sending message:', error);
       setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1].content = 'Sorry, I encountered an error. Please try again.';
-        updated[updated.length - 1].isStreaming = false;
-        return updated;
+        const errorMsg: Message = {
+          role: 'assistant',
+          content: 'Sorry, I encountered an error. Please try again.',
+          messageType: 'content',
+          isStreaming: false
+        };
+        return [...prev, errorMsg];
       });
       addLog('Error');
     } finally {
       setIsLoading(false);
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
       if (selectedFiles.length > 0) {
         // 清理已发送文件引用
         // 仅清空选中文件状态，实际文件释放由子组件负责 revokeObjectURL

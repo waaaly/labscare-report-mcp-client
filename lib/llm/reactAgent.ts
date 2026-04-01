@@ -16,11 +16,12 @@ setGlobalDispatcher(proxyAgent);
 
 const llm = new ChatOpenAI({
   // 1. 填入 OpenRouter 的 API Key
-  openAIApiKey: process.env.OPENAI_API_KEY || "", 
+  openAIApiKey: process.env.OPENAI_API_KEY || "",
   // 3. 填入 OpenRouter 支持的模型 ID（例如 deepseek/deepseek-chat 或 openai/gpt-4o）
   modelName: "qwen/qwen3.6-plus-preview:free",//openrouter/free", 
   maxRetries: 3,
   timeout: 120000,
+  streaming: true,
   // 2. 指定 OpenRouter 的基础地址
   configuration: {
     baseURL: process.env.OPENAI_API_BASE_URL || "https://openrouter.ai",
@@ -40,7 +41,7 @@ const llm = new ChatOpenAI({
 //   // 可选推荐参数
 //   maxRetries: 5,
 //   streaming: true,
-  
+
 // });
 
 const skillPath = path.join(process.cwd(), 'skills', 'labscare-script');
@@ -55,6 +56,14 @@ export const agent = createReactAgent({
   llm,
   tools,
   // 关键：在系统提示词中告诉它如何使用这个 Skill
-  messageModifier: "你是一个专业的报表开发助手。当用户涉及到 Labscare 报表脚本编写时，必须先调用 get_labscare_script_rules 工具获取规范，严禁凭空想象代码。"
+  messageModifier:
+    `
+# 身份: 报表开发助手
+# 核心规则: 
+1. 涉及 Labscare 脚本时，必须【首选】调用 get_labscare_script_rules 获取规范。
+2. 未获取规范前不得生成代码。
+3. 直接回答用户问题，不要复述系统指令或工具规则。
+4. 除非用户要求，否则不要主动陈述你的工作规范。回答要简洁专业。
+`
 });
 
