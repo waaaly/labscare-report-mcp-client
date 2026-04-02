@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Buffer } from 'buffer';
 import ConversationSidebar from '@/components/conversation/ConversationSidebar';
 import ChatArea from '@/components/conversation/ChatArea';
 import AgentToolPanel from '@/components/conversation/AgentToolPanel';
@@ -10,11 +11,20 @@ interface Message {
   content: string;
   isStreaming?: boolean;
   messageType?: 'thought' | 'tool_call' | 'status' | 'content';
+  files?: FileAttachment[];
+}
+
+interface FileAttachment {
+  name: string;
+  type: 'image' | 'json' | 'md';
+  content: string;
+  preview?: string;
 }
 
 export default function LLMConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [conversations, setConversations] = useState<{ id: string; title: string; createdAt: number }[]>([]);
@@ -114,16 +124,58 @@ export default function LLMConversationPage() {
   }, [currentId, msgKey]);
 
   const handleSend = useCallback(async (inputText: string) => {
-    // console.log('handleSend', inputText, selectedFiles);
+    console.log('handleSend', inputText, selectedFiles);
     if (!inputText.trim() && selectedFiles.length === 0) return;
+
+    // 处理文件附件
+    const fileAttachments: FileAttachment[] = [];
+    for (const file of selectedFiles) {
+      try {
+        if (file.type.startsWith('image/')) {
+          const buffer = await file.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString('base64');
+          fileAttachments.push({
+            name: file.name,
+            type: 'image',
+            content: `data:${file.type};base64,${base64}`
+          });
+        } else if (file.type === 'application/json' || file.name.toLowerCase().endsWith('.json')) {
+          const text = await file.text();
+          let prettyText = text;
+          try {
+            const parsed = JSON.parse(text);
+            prettyText = JSON.stringify(parsed, null, 2);
+          } catch {}
+          fileAttachments.push({
+            name: file.name,
+            type: 'json',
+            content: prettyText
+          });
+        } else if (file.type === 'text/markdown' || file.name.toLowerCase().endsWith('.md')) {
+          const text = await file.text();
+          fileAttachments.push({
+            name: file.name,
+            type: 'md',
+            content: text
+          });
+        }
+      } catch (error) {
+        console.error('Error processing file:', file.name, error);
+      }
+    }
 
     const userMessage: Message = {
       role: 'user',
       content: inputText.trim(),
+      files: fileAttachments.length > 0 ? fileAttachments : undefined
     };
-    const newMessages = !inputText.trim()
-      ? [...messages]
-      : [...messages, userMessage];
+
+    // 只有当有文本内容或文件时才添加用户消息
+    const shouldAddMessage = inputText.trim() || fileAttachments.length > 0;
+    const newMessages = shouldAddMessage
+      ? [...messages, userMessage]
+      : [...messages];
+
     setMessages(newMessages);
     if (inputText.trim()) setInput('');
     setIsLoading(true);
@@ -131,6 +183,10 @@ export default function LLMConversationPage() {
     if (selectedFiles.length > 0) {
       addLog(`Files: ${selectedFiles.map(f => f.name).join(', ')}`);
     }
+
+    console.log('文件附件处理完成:', fileAttachments);
+    console.log('用户消息:', userMessage);
+    console.log('新消息列表:', newMessages);
 
     try {
       let response: Response;
@@ -141,6 +197,7 @@ export default function LLMConversationPage() {
         .filter(msg => !msg.isStreaming && msg.content)
         .map(msg => ({ role: msg.role, content: msg.content }));
       formData.append('messagesJson', JSON.stringify(standardMessages));
+     
       if (selectedFiles.length > 0) {
         selectedFiles.forEach((file) => {
           formData.append('files', file);
@@ -163,35 +220,44 @@ export default function LLMConversationPage() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let sseBuffer = "";
+      console.log('[Client] 开始读取流式响应');
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[Client] 流式响应结束');
+          break;
+        }
 
         const chunk = decoder.decode(value, { stream: true });
+        console.log('[Client] 收到数据块，大小:', chunk.length, 'bytes');
         sseBuffer += chunk;
-        
+
         // 按行分割 SSE 消息
         const lines = sseBuffer.split('\n');
         sseBuffer = lines.pop() || ''; // 保留未完成的行
+        console.log('[Client] 处理 SSE 行数:', lines.length);
         
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6); // 移除 'data: ' 前缀
             if (data) {
+              console.log('[Client] 收到原始SSE数据:', data);
               setIsLoading(false);
               try {
                 const json = JSON.parse(data);
+                console.log('[Client] 解析JSON成功，类型:', json.type, '内容:', json.text?.substring(0, 30) || json.tool || json.ttft || 'N/A');
                 if (json.type === 'content' && json.text) {
                   setMessages(prev => {
                     const lastMsg = prev[prev.length - 1];
+                    let newMessages: Message[];
                     if (lastMsg?.messageType === 'content' || (lastMsg?.role === 'assistant' && !lastMsg?.messageType)) {
-                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text, messageType: 'content', isStreaming: true }];
+                      newMessages = [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text, messageType: 'content', isStreaming: true }];
                     } else {
-                      return [...prev, { role: 'assistant', content: json.text, messageType: 'content', isStreaming: true }];
+                      newMessages = [...prev, { role: 'assistant', content: json.text, messageType: 'content', isStreaming: true }];
                     }
+                    return newMessages;
                   });
-                  addLog(`Content: ${json.text.slice(0, 50)}...`);
                 } else if (json.type === 'thought' && json.text) {
                   setMessages(prev => {
                     const lastMsg = prev[prev.length - 1];
@@ -201,6 +267,7 @@ export default function LLMConversationPage() {
                       return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true }];
                     }
                   });
+                  console.log(`[Client] 处理thought消息，内容: "${json.text.substring(0, 30)}..."`);
                   addLog(`Thought: ${json.text.slice(0, 50)}...`);
                 } else if (json.type === 'tool_call' && json.message) {
                   setMessages(prev => {
@@ -211,17 +278,15 @@ export default function LLMConversationPage() {
                       return [...prev, { role: 'assistant', content: json.message, messageType: 'tool_call', isStreaming: true }];
                     }
                   });
+                  console.log(`[Client] 处理tool_call消息，工具: ${json.tool}`);
                   addLog(`Tool Call: ${json.tool}`);
                 } else if (json.type === 'status' && json.text) {
-                  setMessages(prev => {
-                    const lastMsg = prev[prev.length - 1];
-                    if (lastMsg?.messageType === 'status') {
-                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text }];
-                    } else {
-                      return [...prev, { role: 'assistant', content: json.text, messageType: 'status', isStreaming: true }];
-                    }
-                  });
+                  console.log(`[Client] 处理status消息，内容: "${json.text}"`);
                   addLog(`Status: ${json.text}`);
+                  // 使用独立状态立即显示 status，不添加到消息历史
+                  setCurrentStatus(json.text);
+                } else {
+                  console.log(`[Client] 收到未处理的JSON类型:`, json.type, '完整数据:', JSON.stringify(json));
                 }
               } catch (e) {
                 console.error('Error parsing SSE message:', e);
@@ -233,9 +298,19 @@ export default function LLMConversationPage() {
         await new Promise(requestAnimationFrame);
       }
 
+      console.log('[Client] 设置所有消息为非流式状态');
       setMessages(prev => {
-        return prev.map(msg => ({ ...msg, isStreaming: false }));
+        console.log('[Client] 当前消息数:', prev.length);
+        console.log('[Client] 检查文件附件:', prev.map(msg => ({ hasFiles: !!msg.files, fileCount: msg.files?.length || 0 })));
+        return prev.map(msg => ({
+          ...msg,
+          isStreaming: false,
+          // 确保保留文件附件
+          files: msg.files
+        }));
       });
+      // 清除临时状态
+      setCurrentStatus(null);
       scrollToBottom(true);
       addLog('Completed');
 
@@ -271,6 +346,7 @@ export default function LLMConversationPage() {
   }, [input, messages, scrollToBottom, addLog, conversations, currentId, selectedFiles]);
 
   const handleSendFiles = useCallback((files: File[]) => {
+    console.log('[Client] 处理文件上传:', files);
     setSelectedFiles(files);
     if (files?.length) {
       addLog(`Files: ${files.map(f => f.name).join(', ')}`);
@@ -295,7 +371,8 @@ export default function LLMConversationPage() {
           input={input}
           onSend={handleSend}
           messagesEndRef={messagesEndRef}
-          onSendFiles={handleSendFiles}
+          onFilesChange={handleSendFiles}
+          currentStatus={currentStatus}
         />
       </div>
       <div className="w-[320px] h-full border-l flex-shrink-0">

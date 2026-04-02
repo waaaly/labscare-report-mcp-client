@@ -15,8 +15,8 @@ type Props = {
   input: string;
   onSend: (input: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement>;
-  onFilesChange?: (files: File[]) => void;
-  onSendFiles?: (files: File[]) => void;
+  onFilesChange: (files: File[]) => void;
+  currentStatus?: string | null;
 };
 
 export default function ChatArea({
@@ -27,7 +27,7 @@ export default function ChatArea({
   onSend,
   messagesEndRef,
   onFilesChange,
-  onSendFiles,
+  currentStatus = null,
 }: Props) {
   const [attachments, setAttachments] = React.useState<{ file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -106,9 +106,7 @@ export default function ChatArea({
 
   const handleSendClick = React.useCallback(() => {
     const files = attachments.map(a => a.file);
-    if (files.length > 0) {
-      onSendFiles?.(files);
-    }
+
     if (attachments.length > 0) {
       setAttachments(prev => {
         prev.forEach(i => i.preview && URL.revokeObjectURL(i.preview));
@@ -118,7 +116,7 @@ export default function ChatArea({
     }
     onSend(localInput);
     setLocalInput('');
-  }, [onSend, onSendFiles, localInput, setLocalInput, attachments, onFilesChange]);
+  }, [onSend,  localInput, setLocalInput, attachments, onFilesChange]);
 
   const handleKeyPress = React.useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -151,7 +149,7 @@ export default function ChatArea({
   const visibleMessages = React.useMemo(
     () =>
       messages.filter(
-        (m) => !(m.role === 'assistant' && m.isStreaming && !m.content?.trim())
+        (m) => !(m.role === 'assistant' && m.isStreaming && !m.content?.trim()) && m.messageType !== 'status'
       ),
     [messages]
   );
@@ -217,6 +215,7 @@ export default function ChatArea({
           messages={visibleMessages}
           isLoading={isLoading}
           messagesEndRef={messagesEndRef}
+          currentStatus={currentStatus}
         />
       </CardContent>
       <div className="p-4 border-t">
