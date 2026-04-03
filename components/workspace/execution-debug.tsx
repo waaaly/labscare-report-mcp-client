@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Play, Terminal, X } from 'lucide-react';
-import { devLog, devError } from '@/lib/logger';
+// import { logger } from '@/lib/logger';
 
 interface ExecutionDebugProps {
   projectId: string;
@@ -23,7 +23,7 @@ export default function ExecutionDebug({ projectId }: ExecutionDebugProps) {
     const originalError = console.error;
 
     console.log = (...args: unknown[]) => {
-      devLog('Script output:', ...args);
+      // logger.info( {...args},'Script output:',);
       logs.push({
         timestamp: new Date().toISOString(),
         type: 'log',
@@ -33,7 +33,7 @@ export default function ExecutionDebug({ projectId }: ExecutionDebugProps) {
     };
 
     console.error = (...args: unknown[]) => {
-      devError('Script error:', ...args);
+      // logger.info( {...args},'Script error:',);
       logs.push({
         timestamp: new Date().toISOString(),
         type: 'error',

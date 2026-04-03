@@ -65,7 +65,6 @@ type HeightCacheEntry = {
 
 const MarkdownMessage = React.memo(
   ({ content }: { content: string }) => {
-    console.log("[MarkdownMessage] 渲染内容，长度:", content.length);
     return <ReactMarkdown>{content}</ReactMarkdown>;
   },
   (prev, next) => prev.content === next.content,
@@ -581,9 +580,6 @@ export function VirtualizedMessages({
               <div className="max-w-[80%] p-4 rounded-lg bg-muted">
                 {message.isStreaming ? (
                   (() => {
-                    console.log(
-                      `[Streaming] 渲染流式内容，消息 ${index}, 长度: ${message.content?.length || 0} }`,
-                    );
                     return (
                       <pre className="whitespace-pre-wrap">
                         {message.content}
@@ -677,11 +673,6 @@ export function VirtualizedMessages({
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {message.files.map((file, fileIndex) => {
-                        console.log(
-                          `[VirtualizedMessages V] 渲染文件 ${fileIndex}:`,
-                          file.name,
-                          file.type,
-                        );
                         return <FileAttachment key={fileIndex} file={file} />;
                       })}
                     </div>
@@ -724,9 +715,6 @@ export function VirtualizedMessages({
               <div className="max-w-[80%] p-4 rounded-lg bg-muted">
                 {message.isStreaming ? (
                   (() => {
-                    console.log(
-                      `[Virtualized Streaming] 渲染流式内容，消息 ${index}, 长度: ${message.content?.length || 0}`,
-                    );
                     return (
                       <pre className="whitespace-pre-wrap">
                         {message.content}

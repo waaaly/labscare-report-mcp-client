@@ -21,6 +21,30 @@ interface FileAttachment {
   preview?: string;
 }
 
+/**
+ * TODO：
+ * ### 第一阶段（核心功能）
+1. ✅ 停止生成功能
+2. ✅ 消息重新生成
+3. ✅ 消息复制按钮
+4. ✅ 代码高亮和复制
+5. ✅ 对话删除和重命名
+6. ✅ 文件删除（发送前）
+### 第二阶段（体验优化）
+1. ✅ Markdown 完整渲染
+2. ✅ 快捷键支持
+3. ✅ 消息时间戳
+4. ✅ 拖拽上传文件
+5. ✅ 图片放大查看
+6. ✅ 工具调用可视化
+### 第三阶段（高级功能）
+1. ✅ 消息编辑和重新生成
+2. ✅ 对话导出
+3. ✅ 模型切换
+4. ✅ 消息分支
+5. ✅ 对话搜索
+ * @returns 
+ */
 export default function LLMConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
