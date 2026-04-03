@@ -61,7 +61,7 @@ export async function getMcpClient(
     };
 
     client.onerror = (error: Error) => {
-      logger.error('❌ MCP 传输层错误:', error);
+      logger.error(error,'❌ MCP 传输层错误:', );
     };
 
     await client.connect(transport);
@@ -85,7 +85,7 @@ export async function getMcpClient(
     currentTransport = transport;
     return client;
   } catch (err) {
-    logger.error('❌ MCP 连接失败:', err);
+    logger.error( err,'❌ MCP 连接失败:',);
     throw err;
   } finally {
     isConnecting = false;
@@ -115,7 +115,7 @@ export async function closeMcpClient(): Promise<void> {
     await client.close();
     logger.info('🛑 MCP Client 已优雅关闭');
   } catch (err) {
-    logger.error('关闭 MCP Client 失败', { error: err });
+    logger.error( err,'❌ 关闭 MCP Client 失败:',);
   }
 }
 
@@ -169,13 +169,13 @@ export async function callMcpTool<T = any>(
     );
 
     if (result.isError) {
-      logger.error(`Tool 执行失败: ${name}`, { content: result.content });
+      logger.error( result.content,'❌ MCP Tool Error:',);
       throw new Error(`MCP Tool Error: ${JSON.stringify(result.content)}`);
     }
 
     return result.content as T;
   } catch (err) {
-    logger.error(`调用 Tool 失败: ${name}`, { error: err, arguments: argumentsObj });
+    logger.error( err,'❌ 调用 Tool 失败:', name, argumentsObj);
     throw err;
   }
 }

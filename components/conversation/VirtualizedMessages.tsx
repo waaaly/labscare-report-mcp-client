@@ -3,7 +3,7 @@
 import {
   Loader2,
   Send,
-  Paperclip,
+  Copy,
   X,
   Image as ImageIcon,
   File as FileIcon,
@@ -14,6 +14,9 @@ import {
   Database,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import React from "react";
 import { prepare, layout } from "@chenglou/pretext";
 
@@ -63,10 +66,70 @@ type HeightCacheEntry = {
   isLocked: boolean;
 };
 
+const CodeBlock = ({ language, code }: { language: string; code: string }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="relative mt-4 mb-4">
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        <span className="text-xs text-gray-400 font-mono">{language}</span>
+        <button
+          onClick={handleCopy}
+          className="p-1.5 rounded-md bg-gray-800/80 hover:bg-gray-700/80 transition-colors"
+          aria-label="Copy code"
+        >
+          {copied ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+          ) : (
+            <Copy className="h-3.5 w-3.5 text-gray-400" />
+          )}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        language={language || "plaintext"}
+        style={oneDark}
+        customStyle={{
+          margin: 0,
+          borderRadius: "0.375rem",
+          fontSize: "0.875rem",
+          lineHeight: 1.5,
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
+
 const MarkdownMessage = React.memo(
   ({ content }: { content: string }) => {
-    console.log("[MarkdownMessage] 渲染内容，长度:", content.length);
-    return <ReactMarkdown>{content}</ReactMarkdown>;
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code({ node, className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || "");
+            const codeString = String(children).replace(/\n$/, "");
+            
+            return match ? (
+              <CodeBlock language={match[1]} code={codeString} />
+            ) : (
+              <code className={className} {...props}>
+                {children}
+              </code>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    );
   },
   (prev, next) => prev.content === next.content,
 );
@@ -310,11 +373,30 @@ export function VirtualizedMessages({
     new Map(),
   );
   const rafIdRef = React.useRef<number | null>(null);
+  const updateTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [, forceUpdate] = React.useState(0);
   const [fontInfo, setFontInfo] = React.useState({
     font: `14px Inter, ui-sans-serif, system-ui`,
     lineHeight: 20,
   });
+
+  // 节流更新时间戳，避免流式传输时频繁强制更新
+  const lastUpdateTimeRef = React.useRef(0);
+
+  // 清理函数，确保组件卸载时清理所有待处理的定时器
+  React.useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (updateTimeoutRef.current !== null) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
+      }
+      pendingMeasurementsRef.current.clear();
+    };
+  }, []);
 
   React.useEffect(() => {
     // useEffect 只在客户端执行，不会触发服务端与客户端的 Diff 冲突
@@ -368,7 +450,9 @@ export function VirtualizedMessages({
   }, [containerW]);
 
   const getContentHash = React.useCallback((m: Msg) => {
-    return `${m.role}|${m.messageType}|${m.content.length}|${m.content.slice(0, 100)}`;
+    // 对内容长度进行分桶，减少流式传输时的哈希变化
+    const contentLengthBucket = Math.floor(m.content.length / 500) * 500;
+    return `${m.role}|${m.messageType}|${contentLengthBucket}|${m.content.slice(0, 100)}`;
   }, []);
 
   const estimateHeight = React.useCallback(
@@ -423,8 +507,10 @@ export function VirtualizedMessages({
       const isStreaming = msg.isStreaming;
 
       if (cached) {
+        // 流式传输时使用更大的容差，避免频繁更新
+        const tolerance = isStreaming ? 10 : 2;
         if (cached.isLocked && isStreaming) return;
-        if (Math.abs(cached.height - actualRounded) <= 2) return;
+        if (Math.abs(cached.height - actualRounded) <= tolerance) return;
       }
 
       updates.push({
@@ -452,14 +538,38 @@ export function VirtualizedMessages({
         "[VirtualizedMessages] 强制重新渲染，更新数量:",
         updates.length,
       );
-      forceUpdate((n) => n + 1);
+      // 检查是否需要节流：流式传输时限制更新频率
+      const now = Date.now();
+      const hasStreaming = updates.some(u => {
+        const msg = messages[u.index];
+        return msg?.isStreaming;
+      });
+
+      if (hasStreaming && now - lastUpdateTimeRef.current < 100) {
+        // 如果是流式传输且距离上次更新不足 100ms，延迟更新
+        const delay = 100 - (now - lastUpdateTimeRef.current);
+        if (updateTimeoutRef.current !== null) {
+          clearTimeout(updateTimeoutRef.current);
+        }
+        updateTimeoutRef.current = setTimeout(() => {
+          lastUpdateTimeRef.current = Date.now();
+          forceUpdate((n) => n + 1);
+          updateTimeoutRef.current = null;
+        }, delay);
+      } else {
+        lastUpdateTimeRef.current = now;
+        forceUpdate((n) => n + 1);
+      }
     }
   }, [messages, getContentHash, bucketedWidth]);
 
   const scheduleBatchMeasurement = React.useCallback(() => {
     if (rafIdRef.current !== null) return;
     console.log("[VirtualizedMessages] 安排批量高度测量");
-    rafIdRef.current = requestAnimationFrame(processBatchMeasurements);
+    // 使用双重 RAF 确保布局完成后才测量
+    rafIdRef.current = requestAnimationFrame(() => {
+      requestAnimationFrame(processBatchMeasurements);
+    });
   }, [processBatchMeasurements]);
 
   const itemHeights = React.useMemo(() => {
@@ -581,9 +691,6 @@ export function VirtualizedMessages({
               <div className="max-w-[80%] p-4 rounded-lg bg-muted">
                 {message.isStreaming ? (
                   (() => {
-                    console.log(
-                      `[Streaming] 渲染流式内容，消息 ${index}, 长度: ${message.content?.length || 0} }`,
-                    );
                     return (
                       <pre className="whitespace-pre-wrap">
                         {message.content}
@@ -654,6 +761,12 @@ export function VirtualizedMessages({
           const index = start + i;
           const assignRef = (el: HTMLDivElement | null) => {
             if (!el) return;
+            // 检查是否需要测量：如果是流式传输且已经锁定，则跳过
+            const cached = heightCacheRef.current.get(index);
+            if (cached?.isLocked && message.isStreaming) return;
+            // 检查是否已经测量过相同的元素（通过比较引用）
+            if (pendingMeasurementsRef.current.get(index) === el) return;
+
             pendingMeasurementsRef.current.set(index, el);
             scheduleBatchMeasurement();
           };
@@ -677,11 +790,6 @@ export function VirtualizedMessages({
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {message.files.map((file, fileIndex) => {
-                        console.log(
-                          `[VirtualizedMessages V] 渲染文件 ${fileIndex}:`,
-                          file.name,
-                          file.type,
-                        );
                         return <FileAttachment key={fileIndex} file={file} />;
                       })}
                     </div>
@@ -724,9 +832,6 @@ export function VirtualizedMessages({
               <div className="max-w-[80%] p-4 rounded-lg bg-muted">
                 {message.isStreaming ? (
                   (() => {
-                    console.log(
-                      `[Virtualized Streaming] 渲染流式内容，消息 ${index}, 长度: ${message.content?.length || 0}`,
-                    );
                     return (
                       <pre className="whitespace-pre-wrap">
                         {message.content}

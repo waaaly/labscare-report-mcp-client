@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { agent } from '@/lib/llm/reactAgent';
 import { Buffer } from 'buffer';
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { writeToFile } from '@/lib/logger'
+import { writeToFile ,logger} from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // T0: 请求开始
     let firstTokenTime: number | null = null; // T1: 首字时间
     const t_receive = Date.now();
-    console.log('1. 收到请求:', t_receive);
+    logger.info('1. 收到请求:'+t_receive);
     // 1) 解析 FormData
     const t_before_form = Date.now();
     const formData = await request.formData();
-    console.log('2. FormData 解析耗时:', Date.now() - t_before_form, 'ms');
+    logger.info('2. FormData 解析耗时:'+ (Date.now() - t_before_form) + ' ms');
     const prompt = (formData.get('prompt') as string) || '';
     const contextJson = (formData.get('contextJson') as string) || '';
     const messagesJson = (formData.get('messagesJson') as string) || null;
@@ -99,21 +99,21 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (e) {
-        console.error("解析消息历史失败:", e);
+        logger.error("解析消息历史失败:"+ e);
       }
     }
 
     inputMessages.push(new HumanMessage({ content: messageContent }));
 
     const t_before_graph = Date.now();
-    console.log('3. 进入 Graph 准备时间:', t_before_graph - t_receive, 'ms');
-    console.log('4. 输入消息:', inputMessages.length);
-    console.log('5. 文件处理优化:', processedFiles.length, '个文件，避免重复读取');
-    console.log('6. 消息处理优化:', messagesJson ? '只处理最后10条消息' : '无消息历史');
+    logger.info('3. 进入 Graph 准备时间:'+ (t_before_graph - t_receive) + ' ms');
+    logger.info('4. 输入消息:'+ inputMessages.length);
+    logger.info('5. 文件处理优化:'+ processedFiles.length + ' 个文件，避免重复读取');
+    logger.info('6. 消息处理优化:'+ (messagesJson ? '只处理最后10条消息' : '无消息历史'));
 
     const eventStream = await agent.stream({ messages: inputMessages }, { streamMode: [ 'updates', 'messages',] });
     const streamStart = Date.now();
-    console.log('Graph 开始执行:', streamStart - startTime, 'ms');
+    logger.info('Graph 开始执行:'+ (streamStart - startTime) + ' ms');
 
     const runtimeStream = new ReadableStream({
       async start(controller) {
@@ -121,14 +121,14 @@ export async function POST(request: NextRequest) {
         try {
           for await (const event of eventStream) {
             if (event[0] === "updates") {
-              console.log(`[Node Update] 节点 ${Object.keys(event[1])[0]} 执行耗时:`, Date.now() - streamStart, 'ms');
+              logger.info(`[Node Update] 节点 ${Object.keys(event[1])[0]} 执行耗时:`+ (Date.now() - streamStart) + ' ms');
             }
             if (Array.isArray(event) && event.length === 2) {
               const [streamMode, chunk] = event;
               writeToFile(streamMode, chunk);
               if (streamMode === "messages") {
                 const [messageChunk, metadata] = chunk as [any, any];
-                // console.log(messageChunk, metadata);
+                // logger.info(messageChunk, metadata);
                 const currentNode = metadata.langgraph_node;
 
                 // --- 1. 提取深度思考 (Thought/Reasoning) ---
@@ -147,8 +147,8 @@ export async function POST(request: NextRequest) {
                   // 埋点：记录首字响应时间 (TTFT) - 只有在真正收到内容时才记录
                   if (firstTokenTime === null) {
                     firstTokenTime = Date.now();
-                    console.log(`首字耗时 (TTFT): ${firstTokenTime - startTime}ms`);
-                    console.log(`首字发送时间戳: ${Date.now()}`);
+                    logger.info(`首字耗时 (TTFT): ${firstTokenTime - startTime}ms`);
+                    logger.info(`首字发送时间戳: ${Date.now()}`);
                     // 选做：可以通过特殊的 SSE 消息发给前端展示
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "metrics", ttft: firstTokenTime - startTime })}\n\n`));
                   }
@@ -185,11 +185,11 @@ export async function POST(request: NextRequest) {
             }
           }
         } catch (err) {
-          console.error("Stream Error:", err);
+          logger.error("Stream Error:"+ err);
         } finally {
           const endTime = Date.now();
           const totalDuration = endTime - startTime;
-          console.log(`总生成耗时: ${totalDuration}ms`);
+          logger.info(`总生成耗时: ${totalDuration}ms`);
 
           // 发送结束指标
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('LLM API error:', error);
+    logger.error({ error},'LLM API error:');
     return NextResponse.json(
       { error: 'Failed to process LLM request' },
       { status: 500 }
