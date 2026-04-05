@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { agent } from '@/lib/llm/reactAgent';
+import { getAgent } from '@/lib/llm/reactAgent';
 import { Buffer } from 'buffer';
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { writeToFile ,logger} from '@/lib/logger'
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     logger.info('5. 文件处理优化:'+ processedFiles.length + ' 个文件，避免重复读取');
     logger.info('6. 消息处理优化:'+ (messagesJson ? '只处理最后10条消息' : '无消息历史'));
 
+    const agent = await getAgent();
     const eventStream = await agent.stream({ messages: inputMessages }, { streamMode: [ 'updates', 'messages',] });
     const streamStart = Date.now();
     logger.info('Graph 开始执行:'+ (streamStart - startTime) + ' ms');

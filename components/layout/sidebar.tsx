@@ -22,12 +22,13 @@ import { useTranslation } from 'react-i18next';
 const getNavigation = (t: (key: string) => string) => [
   { name: t('dashboard'), href: '/dashboard', icon: FlaskConical },
   { name: t('projects'), href: '/projects', icon: FolderKanban },
+  { name: t('batch'), href: '/batch', icon: FolderKanban },
   { name: t('documents'), href: '/documents', icon: FileText },
   { name: t('lims'), href: '/lims', icon: Database },
   { name: t('scripts'), href: '/scripts', icon: Code },
-  { name: t('knowledge'), href: '/knowledge', icon: BookOpen },
-  { name: t('settings'), href: '/settings', icon: Settings },
+  // { name: t('knowledge'), href: '/knowledge', icon: BookOpen },
   { name: t('conversation'), href: '/conversation', icon: Users },
+  { name: t('settings'), href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
