@@ -2,9 +2,10 @@ import { Worker, Job } from 'bullmq';
 import { readTempFile, deleteTempFile } from '@/lib/storage';
 import { processDocument } from '@/lib/docx/converter';
 import { uploadFile } from '@/lib/minio/client';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { sanitizeFileName } from '@/lib/utils';
 import { updateDocumentProgress } from './client';
+import { logger } from '../logger';
 
 
 /**
@@ -48,6 +49,7 @@ async function processor(job: Job) {
           projectId: task.projectId,
           name: task.name,
           type: task.type,
+          url: '', // 临时空值，后续会更新
           status: 'PROCESSING'
         }
       });
@@ -136,7 +138,7 @@ worker.on('failed', (job, error) => {
  * 启动文档处理器
  */
 export function startDocumentProcessor(): void {
-  console.log('Document processor started with BullMQ');
+  logger.info('Document processor started with BullMQ');
 }
 
 // 导出 worker

@@ -65,6 +65,7 @@ async function main() {
       name: 'blood_test_report.pdf',
       type: 'PDF',
       url: '/uploads/blood_test_report.pdf',
+      status: 'COMPLETED',
       annotations: {
         'A2': 'patientId',
         'B2': 'sampleDate',

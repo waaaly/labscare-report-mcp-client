@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import type { CreateLabRequest, UpdateLabRequest } from '@/types/api';
 import { Prisma } from '@prisma/client';
 
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       data: {
         name,
         domain,
+        version: '1.0.0', // 默认版本
         fieldMappings: fieldMappings as Prisma.InputJsonValue,
         extractionRules: extractionRules as Prisma.InputJsonValue,
         sampleFilters: sampleFilters as Prisma.InputJsonValue,

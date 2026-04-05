@@ -1,6 +1,8 @@
 {
   "dashboard": "仪表板",
   "projects": "项目",
+  "batch": "批量任务",
+  "tasks": "任务管理",
   "documents": "文档",
   "knowledge": "知识库",
   "scripts": "脚本",

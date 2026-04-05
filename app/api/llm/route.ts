@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAgent } from '@/lib/llm/reactAgent';
 import { Buffer } from 'buffer';
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { writeToFile ,logger} from '@/lib/logger'
-
+import { logger} from '@/lib/logger'
+import { writeToFile } from '@/lib/logger-to-file'
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // T0: 请求开始

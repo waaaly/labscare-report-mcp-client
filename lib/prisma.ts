@@ -1,30 +1,20 @@
 import { PrismaClient } from '@prisma/client';
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+// 全局 Prisma 客户端实例
+let prisma: PrismaClient;
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-prisma.$use(async (params, next) => {
-  const { createId } = require('@paralleldrive/cuid2');
-  if (params.action === 'create') {
-    switch (params.model) {
-      case "Project":
-        if (!params.args.data.id) {
-          params.args.data.id = `proj${createId()}`;
-        }
-      case "Lab":
-        if (!params.args.data.id) {
-          params.args.data.id = `lab${createId()}`;
-        }
-      case "Document":
-        if (!params.args.data.id) {
-          params.args.data.id = `doc${createId()}`;
-        }
-    }
+if (process.env.NODE_ENV === 'production') {
+  // 生产环境直接创建新实例
+  prisma = new PrismaClient();
+} else {
+  // 开发环境使用全局实例避免重复创建
+  const globalForPrisma = global as unknown as { prisma: PrismaClient };
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = new PrismaClient({
+      log: ['query', 'error', 'warn'],
+    });
   }
+  prisma = globalForPrisma.prisma;
+}
 
-  return next(params);
-});
+export default prisma;

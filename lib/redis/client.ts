@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { Queue, Worker, Job } from 'bullmq';
+import { logger } from '../logger';
 
 // Redis 客户端单例
 class RedisClientSingleton {
@@ -196,6 +197,44 @@ export async function updateDocumentProgress(documentId: string, progress: numbe
     console.error('Failed to update document progress:', error);
     throw error;
   }
+}
+
+// ===== Redis 配置 =====
+
+export function getRedisConfig() {
+  return {
+    host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
+    port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
+    password: process.env.REDIS_PASSWORD,
+    db: Number(process.env.REDIS_DB) || 0
+  };
+}
+// 将变量置于模块顶层，但不导出，确保外部只能通过函数访问
+let reportQueue: Queue | null = null;
+export function getReportQueue(): Queue {
+  // 使用双重检查或简单的 null 判断
+  if (!reportQueue) {
+    const redisConfig = getRedisConfig();
+    
+    logger.info({ redisConfig }, 'Initializing Report Queue');
+
+    reportQueue = new Queue('report', { 
+      connection: redisConfig,
+      // 可以在这里添加默认配置，如 defaultJobOptions
+    });
+
+    // 绑定全局错误监听
+    reportQueue.on('error', (err) => {
+      logger.error({ err }, '[Batch API] Queue error');
+    });
+
+    // 可选：监听连接成功
+    reportQueue.on('waiting', () => {
+      logger.debug('Report Queue is waiting for jobs');
+    });
+  }
+
+  return reportQueue;
 }
 
 // 导出 BullMQ 队列

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getDocumentStatus } from '@/lib/redis/client';
 import { deleteFile } from '@/lib/minio/client';
 

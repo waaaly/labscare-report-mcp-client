@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,38 +10,100 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Lab {
-  id                String   @id @default(cuid())
-  name              String
-  domain            String
-  account           String    @default("")
-  token             String    @default("")
-  version           String   @default("1.0.0")
-  fieldMappings     Json     @default("{}")
-  extractionRules   Json     @default("{}")
-  sampleFilters     Json     @default("{}")
-  promptTemplates   Json     @default("{}")
-  knowledgeBase     Json     @default("{}")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  projects          Project[]
-  members           LabMember[]
-  
-  @@index([name])
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tasks        Task[]
 }
 
-model LabMember {
-  id        String   @id @default(cuid())
-  labId     String
-  userId    String
-  role      String   @default("MEMBER")
-  createdAt DateTime @default(now())
+model ReportTemplate {
+  id          String   @id
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+}
+
+model Task {
+  id                     String         @id @default(cuid())
+  userId                 String         @map("user_id")
+  name                   String
+  reportType             String?        @map("report_type")
+  additionalInstructions String?        @map("additional_instructions")
+  status                 String
+  progress               Int            @default(0)
+  temperature            Decimal?       @default(0.7)
+  maxTokens              Int?           @default(4000) @map("max_tokens")
+  model                  String?        @default("claude-sonnet-4.5")
+  result                 Json?
+  error                  String?
+  duration               BigInt?
+  createdAt              DateTime       @default(now())
+  completedAt            DateTime?      @map("completed_at")
+  updatedAt              DateTime       @updatedAt
+  materials              Material[]
+  logs                   TaskLog[]
   
-  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user                   User           @relation(fields: [userId], references: [id])
+  reportTemplate         ReportTemplate? @relation(fields: [reportType], references: [id])
   
-  @@unique([labId, userId])
   @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reportType])
+}
+
+model Material {
+  id          String   @id @default(cuid())
+  taskId      String   @map("task_id")
+  name        String
+  type        String
+  size        BigInt?
+  description String?
+  storagePath String?  @map("storage_path")
+  url         String?
+  content     Json?
+  createdAt   DateTime @default(now())
+  
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@index([taskId])
+  @@index([type])
+}
+
+model TaskLog {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  timestamp DateTime @default(now())
+  type      String
+  content   String
+  metadata  Json?
+  
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@index([taskId])
+  @@index([timestamp])
+  @@index([type])
+}
+
+model Lab {
+  id               String   @id @default(cuid())
+  name             String
+  domain           String
+  version          String
+  fieldMappings    Json?
+  extractionRules  Json?
+  sampleFilters    Json?
+  promptTemplates  Json?
+  knowledgeBase    Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  projects         Project[]
 }
 
 model Project {
@@ -46,16 +111,13 @@ model Project {
   labId       String
   name        String
   description String?
-  status      String   @default("ACTIVE")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
   documents   Document[]
   schemas     Schema[]
   scripts     Script[]
   
-  @@index([labId])
+  lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
 }
 
 model Document {
@@ -63,19 +125,15 @@ model Document {
   projectId   String
   name        String
   type        String
-  url         String?
-  cover       String?
+  url         String
+  status      String
   pdf         String?
-  content     Json?
-  annotations Json     @default("{}")
-  status      String   @default("PENDING")
-  taskId      String?
+  cover       String?
+  annotations Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
-  @@index([projectId])
-  @@index([taskId])
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Schema {
@@ -83,26 +141,21 @@ model Schema {
   projectId   String
   name        String
   definition  Json
-  version     String   @default("1.0.0")
+  version     String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  @@index([projectId])
 }
 
 model Script {
   id          String   @id @default(cuid())
   projectId   String
   name        String
-  code        String   @db.Text
-  status      String   @default("DRAFT")
-  lastRunAt   DateTime?
+  code        String
+  status      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  @@index([projectId])
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { readMcpResource } from '@/lib/mcp/client';
 import type { UpdateKnowledgeBaseRequest } from '@/types/api';
 import { Prisma } from '@prisma/client';

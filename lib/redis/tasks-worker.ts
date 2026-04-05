@@ -9,24 +9,15 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { logger } from "../lib/logger";
-import { createAgentInstance } from "../lib/llm/agent-factory";
+import { logger } from "../logger";
+import { createAgentInstance } from "../llm/agent-factory";
 import {
   publishStreamChunk,
   markStreamComplete,
   markStreamFailed,
-} from "../lib/queue/stream-publisher";
+} from "../queue/stream-publisher";
+import { getRedisConfig } from "./client";
 
-// ===== Redis 配置 =====
-
-function getRedisConfig() {
-  return {
-    host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
-    port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
-    password: process.env.REDIS_PASSWORD,
-    db: Number(process.env.REDIS_DB) || 0
-  };
-}
 
 const redisConfig = getRedisConfig();
 
@@ -479,6 +470,11 @@ module.exports = reportScript;
     await new Promise(resolve => setTimeout(resolve, totalDuration - elapsed));
   }
 }
-
+/**
+ * 启动文档处理器
+ */
+export function startTasksProcessor(): void {
+  logger.info('Tasks processor started with BullMQ');
+}
 // 导出 worker（用于测试）
 export { worker };

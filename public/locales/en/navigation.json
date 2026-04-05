@@ -1,6 +1,8 @@
 {
   "dashboard": "Dashboard",
   "projects": "Projects",
+  "batch": "Batch Tasks",
+  "tasks": "Tasks",
   "documents": "Documents",
   "knowledge": "Knowledge",
   "scripts": "Scripts",

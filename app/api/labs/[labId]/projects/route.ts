@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import type { CreateProjectRequest } from '@/types/api';
 
 export async function GET(
