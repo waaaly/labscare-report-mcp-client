@@ -85,72 +85,6 @@ export default function TaskDetailPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Sample task data
-  const sampleTask: TaskDetail = {
-    id: taskId,
-    name: '2024年血液检测报告批量分析',
-    status: 'running',
-    progress: 67,
-    materials: [
-      { id: '1', name: 'blood_test_report.pdf', type: 'pdf', size: 1024 * 500, description: '血液常规检测报告' },
-      { id: '2', name: 'patient_info.json', type: 'json', size: 1024 * 2, description: '患者基本信息' },
-      { id: '3', name: 'report_template_desc.txt', type: 'description', size: 1024, description: '报告模板描述文件' },
-    ],
-    createdAt: new Date(Date.now() - 7200000),
-    logs: [
-      {
-        id: '1',
-        timestamp: new Date(Date.now() - 7100000),
-        type: 'info',
-        content: '任务已创建，开始处理物料',
-      },
-      {
-        id: '2',
-        timestamp: new Date(Date.now() - 7000000),
-        type: 'thought',
-        content: '正在分析第一个物料：blood_test_report.pdf\n这是一个血液检测报告，需要提取白细胞、红细胞、血小板等关键指标。',
-      },
-      {
-        id: '3',
-        timestamp: new Date(Date.now() - 6800000),
-        type: 'tool',
-        content: '调用 OCR 工具解析 PDF 文件\n文件：blood_test_report.pdf\n页数：3 页',
-      },
-      {
-        id: '4',
-        timestamp: new Date(Date.now() - 6500000),
-        type: 'progress',
-        content: '已完成 1/3 个物料的处理 (33%)',
-        metadata: { current: 1, total: 3 },
-      },
-      {
-        id: '5',
-        timestamp: new Date(Date.now() - 6000000),
-        type: 'thought',
-        content: '正在分析第二个物料：patient_info.json\n发现患者年龄：45岁，性别：女性。\n需要结合血液检测结果生成个性化分析报告。',
-      },
-      {
-        id: '6',
-        timestamp: new Date(Date.now() - 5500000),
-        type: 'tool',
-        content: '调用数据提取工具\n从 JSON 文件中提取患者基础信息',
-      },
-      {
-        id: '7',
-        timestamp: new Date(Date.now() - 5000000),
-        type: 'progress',
-        content: '已完成 2/3 个物料的处理 (67%)',
-        metadata: { current: 2, total: 3 },
-      },
-      {
-        id: '8',
-        timestamp: new Date(Date.now() - 4500000),
-        type: 'thought',
-        content: '正在分析第三个物料：report_template_desc.txt\n模板要求生成包含指标表格、异常高亮和建议的三段式报告。',
-      },
-    ],
-  };
-
   useEffect(() => {
     loadTaskDetail();
 
@@ -173,16 +107,33 @@ export default function TaskDetailPage() {
   const loadTaskDetail = async () => {
     setIsLoading(true);
     try {
-      // In production, fetch from API
-      // const response = await fetch(`/api/tasks/${taskId}`);
-      // const data = await response.json();
-      // setTask(data);
-      // setLogs(data.logs || []);
-
-      // Use sample data for now
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setTask(sampleTask);
-      setLogs(sampleTask.logs);
+      // 从 API 获取任务详情
+      const response = await fetch(`/api/tasks/${taskId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch task detail');
+      }
+      const data = await response.json();
+      // 转换数据格式
+      const formattedTask = {
+        id: data.id,
+        name: data.name,
+        status: data.status === 'waiting' ? 'running' : data.status,
+        progress: data.progress,
+        materials: data.materials.map((material: any) => ({
+          id: material.id,
+          name: material.name,
+          type: material.type,
+          size: material.size,
+          description: material.description,
+        })),
+        createdAt: new Date(data.createdAt),
+        completedAt: data.completedAt ? new Date(data.completedAt) : undefined,
+        duration: data.duration,
+        result: data.result,
+        logs: [], // 日志通过 SSE 实时获取
+      };
+      setTask(formattedTask);
+      setLogs([]); // 清空日志，通过 SSE 重新获取
     } catch (error) {
       toast.error('加载任务详情失败');
     } finally {
@@ -201,11 +152,19 @@ export default function TaskDetailPage() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'log') {
-            setLogs(prev => [...prev, data.message]);
+            // 转换日志格式
+            const logMessage = {
+              id: crypto.randomUUID(),
+              timestamp: new Date(),
+              type: data.message.type || 'info',
+              content: data.message.content || JSON.stringify(data.message),
+              metadata: data.message.metadata,
+            };
+            setLogs(prev => [...prev, logMessage]);
           } else if (data.type === 'progress') {
             setTask(prev => prev ? { ...prev, progress: data.progress } : null);
           } else if (data.type === 'status') {
-            setTask(prev => prev ? { ...prev, status: data.status } : null);
+            setTask(prev => prev ? { ...prev, status: data.status === 'waiting' ? 'running' : data.status } : null);
           }
         } catch (e) {
           console.error('Failed to parse SSE message:', e);

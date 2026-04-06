@@ -20,77 +20,6 @@ model User {
   tasks        Task[]
 }
 
-model ReportTemplate {
-  id          String   @id
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tasks       Task[]
-}
-
-model Task {
-  id                     String         @id @default(cuid())
-  userId                 String         @map("user_id")
-  name                   String
-  reportType             String?        @map("report_type")
-  additionalInstructions String?        @map("additional_instructions")
-  status                 String
-  progress               Int            @default(0)
-  temperature            Decimal?       @default(0.7)
-  maxTokens              Int?           @default(4000) @map("max_tokens")
-  model                  String?        @default("claude-sonnet-4.5")
-  result                 Json?
-  error                  String?
-  duration               BigInt?
-  createdAt              DateTime       @default(now())
-  completedAt            DateTime?      @map("completed_at")
-  updatedAt              DateTime       @updatedAt
-  materials              Material[]
-  logs                   TaskLog[]
-  
-  user                   User           @relation(fields: [userId], references: [id])
-  reportTemplate         ReportTemplate? @relation(fields: [reportType], references: [id])
-  
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-  @@index([reportType])
-}
-
-model Material {
-  id          String   @id @default(cuid())
-  taskId      String   @map("task_id")
-  name        String
-  type        String
-  size        BigInt?
-  description String?
-  storagePath String?  @map("storage_path")
-  url         String?
-  content     Json?
-  createdAt   DateTime @default(now())
-  
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@index([taskId])
-  @@index([type])
-}
-
-model TaskLog {
-  id        String   @id @default(cuid())
-  taskId    String   @map("task_id")
-  timestamp DateTime @default(now())
-  type      String
-  content   String
-  metadata  Json?
-  
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@index([taskId])
-  @@index([timestamp])
-  @@index([type])
-}
-
 model Lab {
   id               String   @id @default(cuid())
   name             String
@@ -104,6 +33,7 @@ model Lab {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   projects         Project[]
+  tasks            Task[]
 }
 
 model Project {
@@ -111,29 +41,51 @@ model Project {
   labId       String
   name        String
   description String?
+  limsPid     String   @unique
+  caseId      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   documents   Document[]
+  reports     Report[]
   schemas     Schema[]
   scripts     Script[]
   
   lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
 }
 
-model Document {
+model Report {
   id          String   @id @default(cuid())
   projectId   String
   name        String
-  type        String
+  description String?
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  documents   Document[]
+  tasks       Task[]
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  projectId   String
+  reportId    String?
+  name        String
+  type        String  
   url         String
   status      String
+  size        BigInt?
+  description String?
+  storagePath String?  @map("storage_path")
+  content     Json?
   pdf         String?
   cover       String?
-  annotations Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report      Report?  @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
 model Schema {
@@ -158,4 +110,61 @@ model Script {
   updatedAt   DateTime @updatedAt
   
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ReportTemplate {
+  id          String   @id
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+}
+
+model Task {
+  id                     String         @id @default(cuid())
+  userId                 String         @map("user_id")
+  labId                  String         @map("lab_id")
+  name                   String
+  reportId               String
+  reportType             String?        @map("report_type")
+  additionalInstructions String?        @map("additional_instructions")
+  status                 String
+  progress               Int            @default(0)
+  temperature            Decimal?       @default(0.7)
+  maxTokens              Int?           @default(4000) @map("max_tokens")
+  model                  String?        @default("claude-sonnet-4.5")
+  result                 Json?
+  error                  String?
+  duration               BigInt?
+  createdAt              DateTime       @default(now())
+  completedAt            DateTime?      @map("completed_at")
+  updatedAt              DateTime       @updatedAt
+  logs                   TaskLog[]
+  
+  user                   User           @relation(fields: [userId], references: [id])
+  lab                    Lab            @relation(fields: [labId], references: [id])
+  report                 Report         @relation(fields: [reportId], references: [id])
+  reportTemplate         ReportTemplate? @relation(fields: [reportType], references: [id])
+  
+  @@index([userId])
+  @@index([labId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reportType])
+}
+
+model TaskLog {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  timestamp DateTime @default(now())
+  type      String
+  content   String
+  metadata  Json?
+  
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@index([taskId])
+  @@index([timestamp])
+  @@index([type])
 }

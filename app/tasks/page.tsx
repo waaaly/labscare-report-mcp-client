@@ -74,80 +74,54 @@ export default function TasksPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
-  // Sample data for demo
-  const sampleTasks: Task[] = [
-    {
-      id: 'task-001',
-      name: '2024年血液检测报告批量分析',
-      status: 'completed',
-      progress: 100,
-      materials: [
-        { type: 'pdf', count: 5 },
-        { type: 'json', count: 2 },
-      ],
-      createdAt: new Date(Date.now() - 3600000),
-      completedAt: new Date(Date.now() - 1800000),
-    },
-    {
-      id: 'task-002',
-      name: '综合检测报告生成任务',
-      status: 'running',
-      progress: 67,
-      materials: [
-        { type: 'pdf', count: 8 },
-        { type: 'image', count: 3 },
-      ],
-      createdAt: new Date(Date.now() - 7200000),
-    },
-    {
-      id: 'task-003',
-      name: '历史数据整理脚本生成',
-      status: 'failed',
-      progress: 35,
-      materials: [
-        { type: 'json', count: 1 },
-      ],
-      createdAt: new Date(Date.now() - 86400000),
-      error: 'LLM API 超时',
-    },
-    {
-      id: 'task-004',
-      name: 'Q1 尿常规分析报告',
-      status: 'completed',
-      progress: 100,
-      materials: [
-        { type: 'pdf', count: 12 },
-        { type: 'json', count: 4 },
-      ],
-      createdAt: new Date(Date.now() - 172800000),
-      completedAt: new Date(Date.now() - 171000000),
-    },
-  ];
-
   useEffect(() => {
     loadTasks();
   }, []);
 
   useEffect(() => {
     // Auto-refresh running tasks
-    const interval = setInterval(() => {
-      if (tasks.some(t => t.status === 'running')) {
-        loadTasks();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
+    // const interval = setInterval(() => {
+    //   if (tasks.some(t => t.status === 'running')) {
+    //     loadTasks();
+    //   }
+    // }, 5000);
+    // return () => clearInterval(interval);
   }, [tasks]);
 
   const loadTasks = async () => {
     setIsLoading(true);
     try {
-      // In production, fetch from API
-      // const response = await fetch('/api/tasks');
-      // const data = await response.json();
-      // setTasks(data);
-
-      // Use sample data for now
-      setTasks(sampleTasks);
+      // 从 API 获取任务列表
+      const statusParam = filter !== 'all' ? filter : undefined;
+      const url = new URL('/api/tasks', window.location.origin);
+      if (statusParam) {
+        url.searchParams.append('status', statusParam);
+      }
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        throw new Error('Failed to fetch tasks');
+      }
+      const data = await response.json();
+      // 转换数据格式
+      const formattedTasks = data.map((task: any) => ({
+        id: task.id,
+        name: task.name,
+        status: task.status === 'waiting' ? 'running' : task.status,
+        progress: task.progress,
+        materials: task.materials.reduce((acc: any[], material: any) => {
+          const existing = acc.find(m => m.type === material.type);
+          if (existing) {
+            existing.count++;
+          } else {
+            acc.push({ type: material.type, count: 1 });
+          }
+          return acc;
+        }, []),
+        createdAt: new Date(task.createdAt),
+        completedAt: task.completedAt ? new Date(task.completedAt) : undefined,
+        error: task.error,
+      }));
+      setTasks(formattedTasks);
     } catch (error) {
       toast.error('加载任务列表失败');
     } finally {

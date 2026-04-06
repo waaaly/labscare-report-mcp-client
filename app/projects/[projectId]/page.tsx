@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, X, Badge } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, X, Badge, Database } from 'lucide-react';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
+import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
 import DocumentViewer, { DocumentViewerHandle } from '@/components/workspace/document-viewer';
 import AnnotationMapping from '@/components/workspace/annotation-mapping';
@@ -29,10 +31,18 @@ export default function ProjectWorkspacePage() {
   
   const [currentStep, setCurrentStep] = useState<PipelineStep>('document');
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isAddReportDialogOpen, setIsAddReportDialogOpen] = useState(false);
+  const [newReportName, setNewReportName] = useState('');
+  const [reports, setReports] = useState<Array<{id: string, name: string, materials: Array<{id: string, name: string, type: string, content: string}>}>>([]);
+  const [isFileUploadDrawerOpen, setIsFileUploadDrawerOpen] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [isProgressDialogOpen, setIsProgressDialogOpen] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
   const documentViewerRef = useRef<DocumentViewerHandle>(null);
 
   useEffect(() => {
@@ -47,18 +57,6 @@ export default function ProjectWorkspacePage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const allowedTypes = [
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ];
-      
-      if (!allowedTypes.includes(file.type)) {
-        setUploadError('Only PDF, DOC, and DOCX files are allowed');
-        setSelectedFile(null);
-        return;
-      }
-
       const maxSize = 10 * 1024 * 1024;
       if (file.size > maxSize) {
         setUploadError('File size must be less than 10MB');
@@ -69,6 +67,39 @@ export default function ProjectWorkspacePage() {
       setUploadError('');
       setSelectedFile(file);
     }
+  };
+
+  const connectToSSE = (documentId: string) => {
+    const eventSource = new EventSource(`/api/sse/doc-upload-progress/${documentId}`);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setUploadProgress(data.progress || 0);
+        setUploadMessage(data.message || '');
+        
+        if (data.status === 'completed' || data.status === 'failed') {
+          eventSource.close();
+          setTimeout(() => {
+            setIsProgressDialogOpen(false);
+            if (data.status === 'completed') {
+              toast.success('File uploaded successfully');
+            } else {
+              toast.error('File upload failed');
+            }
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('Error parsing SSE message:', error);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      eventSource.close();
+    };
+    
+    return eventSource;
   };
 
   const handleUpload = async () => {
@@ -87,7 +118,7 @@ export default function ProjectWorkspacePage() {
 
     try {
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      formData.append('files', selectedFile);
 
       const response = await fetch(`/api/labs/${currentProject.labId}/projects/${projectId}/documents`, {
         method: 'POST',
@@ -96,22 +127,50 @@ export default function ProjectWorkspacePage() {
 
       if (response.ok) {
         const data = await response.json();
-        setIsUploadDialogOpen(false);
-        setSelectedFile(null);
-        
-        // 显示正在处理的 toast
-        toast.info('Document is being processed in background...');
-        setDocuments([...documents, data]);
-        setSelectedDocumentId(data.documentId);
-        // 刷新文档列表
-        // if (currentLab?.id) {
-        //   await loadProject(projectId, currentLab.id);
-        // }
-        
-        // // 立即选择刚上传的文档
-        // if (data.documentId) {
-        //   setSelectedDocumentId(data.documentId);
-        // }
+        if (data && data.length > 0) {
+          const document = data[0];
+          setCurrentDocumentId(document.id);
+          setIsProgressDialogOpen(true);
+          setUploadProgress(0);
+          setUploadMessage('Starting upload...');
+          
+          // 连接SSE获取进度
+          connectToSSE(document.id);
+          
+          // 关闭抽屉
+          setIsFileUploadDrawerOpen(false);
+          setSelectedFile(null);
+          
+          // 更新报告物料
+          if (selectedReportId) {
+            const fileType = selectedFile.name.split('.').pop() || '';
+            let materialType = 'other';
+            if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileType.toLowerCase())) {
+              materialType = 'image';
+            } else if (fileType.toLowerCase() === 'json') {
+              materialType = 'json';
+            } else if (fileType.toLowerCase() === 'md') {
+              materialType = 'md';
+            }
+
+            const newMaterial = {
+              id: document.id,
+              name: selectedFile.name,
+              type: materialType,
+              content: materialType === 'image' ? document.url : 'Processing...'
+            };
+
+            setReports(reports.map(report => {
+              if (report.id === selectedReportId) {
+                return {
+                  ...report,
+                  materials: [...report.materials, newMaterial]
+                };
+              }
+              return report;
+            }));
+          }
+        }
       } else {
         const data = await response.json();
         setUploadError(data.error || 'Failed to upload document');
@@ -234,71 +293,55 @@ export default function ProjectWorkspacePage() {
             </p>
           </div>
         </div>
-        <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+        <Dialog open={isAddReportDialogOpen} onOpenChange={setIsAddReportDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer">
-              <Upload className="mr-2 h-4 w-4" />
-              Upload
+              <FileText className="mr-2 h-4 w-4" />
+              Add Report
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Upload Document</DialogTitle>
+              <DialogTitle>Add Report</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="file">Select File</Label>
+                <Label htmlFor="report-name">Report Name</Label>
                 <Input
-                  id="file"
-                  type="file"
-                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={handleFileSelect}
-                  disabled={isUploading}
+                  id="report-name"
+                  type="text"
+                  value={newReportName}
+                  onChange={(e) => setNewReportName(e.target.value)}
+                  placeholder="Enter report name"
                   className="cursor-pointer"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Supported formats: PDF, DOC, DOCX (Max 10MB)
-                </p>
               </div>
-
-              {selectedFile && (
-                <div className="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
-                  <p className="text-sm font-medium text-cyan-900">{selectedFile.name}</p>
-                  <p className="text-xs text-cyan-700">
-                    {(selectedFile.size / 1024).toFixed(2)} KB
-                  </p>
-                </div>
-              )}
-
-              {uploadError && (
-                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-                  {uploadError}
-                </div>
-              )}
 
               <div className="flex gap-3">
                 <Button
-                  onClick={handleUpload}
-                  disabled={isUploading || !selectedFile}
+                  onClick={() => {
+                    if (newReportName.trim()) {
+                      const newReport = {
+                        id: Date.now().toString(),
+                        name: newReportName.trim(),
+                        materials: []
+                      };
+                      setReports([...reports, newReport]);
+                      setIsAddReportDialogOpen(false);
+                      setNewReportName('');
+                    }
+                  }}
+                  disabled={!newReportName.trim()}
                   className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
                 >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    'Upload'
-                  )}
+                  Add
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setIsUploadDialogOpen(false);
-                    setSelectedFile(null);
-                    setUploadError('');
+                    setIsAddReportDialogOpen(false);
+                    setNewReportName('');
                   }}
-                  disabled={isUploading}
                   className="flex-1 cursor-pointer"
                 >
                   Cancel
@@ -309,121 +352,211 @@ export default function ProjectWorkspacePage() {
         </Dialog>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-[280px] bg-white border-r border-gray-200 flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Documents</h2>
+      <div className="flex-1 overflow-auto p-6">
+        {reports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+            <FileText className="h-12 w-12 text-gray-300 mb-3" />
+            <p className="text-sm text-gray-500 mb-2">No reports added</p>
+            <p className="text-xs text-gray-400">Add your first report to start</p>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {documents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-                <FileText className="h-12 w-12 text-gray-300 mb-3" />
-                <p className="text-sm text-gray-500 mb-2">No documents uploaded</p>
-                <p className="text-xs text-gray-400">Upload your first document to start</p>
-              </div>
-            ) : (
-              <div className="p-2 space-y-2">
-                {documents.map((doc) => {
-                  const isSelected = doc.id === selectedDocumentId;
-                  const pipelineStatus = getDocumentPipelineStatus(doc.id) || {
-                    document: 'completed',
-                    mapping: 'pending',
-                    lims: 'pending',
-                    schema: 'pending',
-                    script: 'pending',
-                    debug: 'pending',
-                  };
-                  const progressColors = getPipelineProgress(pipelineStatus);
-
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => handleDocumentClick(doc.id)}
-                      className={cn(
-                        "p-3 rounded-lg border-2 cursor-pointer transition-all duration-200",
-                        isSelected
-                          ? "border-cyan-500 bg-cyan-50 shadow-md"
-                          : "border-gray-200 bg-white hover:border-cyan-300 hover:shadow-sm"
-                      )}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {getFileIcon(doc.type)}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate" title={doc.name}>
-                              {doc.name}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs text-gray-500">
-                                {new Date(doc.createdAt).toLocaleDateString('zh-CN')}
-                              </p>
-                              {doc.status && (
-                                <span className={cn(
-                                  "text-xs px-2 py-0.5 rounded-full",
-                                  doc.status === 'COMPLETED' && "bg-green-100 text-green-800",
-                                  doc.status === 'PROCESSING' && "bg-blue-100 text-blue-800",
-                                  doc.status === 'PENDING' && "bg-yellow-100 text-yellow-800",
-                                  doc.status === 'FAILED' && "bg-red-100 text-red-800"
-                                )}>
-                                  {doc.status === 'COMPLETED' && 'Completed'}
-                                  {doc.status === 'PROCESSING' && 'Processing'}
-                                  {doc.status === 'PENDING' && 'Pending'}
-                                  {doc.status === 'FAILED' && 'Failed'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+        ) : (
+          <div className="space-y-4">
+            {reports.map((report) => (
+              <div key={report.id} className="border rounded-lg bg-white">
+                <div 
+                  className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setSelectedReportId(selectedReportId === report.id ? null : report.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-cyan-600" />
+                    <span className="text-sm font-medium">{report.name}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedReportId(report.id);
+                      setIsFileUploadDrawerOpen(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <Upload className="mr-1 h-3 w-3" />
+                    Upload
+                  </Button>
+                </div>
+                {selectedReportId === report.id && (
+                  <div className="px-4 pb-4">
+                    <div className="space-y-3">
+                      {report.materials.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          No materials uploaded yet
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 flex-shrink-0 cursor-pointer hover:bg-red-50 hover:text-red-600"
-                          onClick={(e) => handleDeleteDocument(doc.id, e)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
+                      ) : (
+                        report.materials.map((material) => {
+                          if (material.type === "image") {
+                            return (
+                              <div key={material.id} className="mt-2 rounded-lg overflow-hidden border bg-background">
+                                <img
+                                  src={material.content}
+                                  alt={material.name}
+                                  className="max-w-full h-auto max-h-64 object-contain"
+                                />
+                                <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50">
+                                  {material.name}
+                                </div>
+                              </div>
+                            );
+                          }
 
-                      <div className="flex gap-1 h-1.5">
-                        {progressColors.map((color, i) => (
-                          <div
-                            key={i}
-                            className={cn("flex-1 rounded-full", color)}
-                          />
-                        ))}
-                      </div>
+                          if (material.type === "json") {
+                            return (
+                              <div key={material.id} className="mt-2 border rounded-lg bg-background">
+                                <div className="px-3 pb-2">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Database className="w-4 h-4 text-blue-500" />
+                                    <span className="text-sm font-medium">{material.name}</span>
+                                  </div>
+                                  <pre className="text-xs font-mono bg-muted/30 p-2 rounded overflow-auto max-h-64 overflow-y-auto">
+                                    {material.content}
+                                  </pre>
+                                </div>
+                              </div>
+                            );
+                          }
 
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {doc.hasIndependentPipeline && (
-                          <Badge type="secondary" className="text-xs bg-cyan-100 text-cyan-700 border-cyan-200">
-                            独立Pipeline
-                          </Badge>
-                        )}
-                        {doc.hasUniqueSchemaAndScript && (
-                          <Badge  type="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
-                            独有Schema & JS脚本
-                          </Badge>
-                        )}
-                      </div>
+                          if (material.type === "md") {
+                            return (
+                              <div key={material.id} className="mt-2 border rounded-lg bg-background">
+                                <div className="px-3 pb-2">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <FileIcon className="w-4 h-4 text-purple-500" />
+                                    <span className="text-sm font-medium">{material.name}</span>
+                                  </div>
+                                  <div className="text-xs bg-muted/30 p-2 rounded overflow-auto max-h-64 overflow-y-auto">
+                                    <ReactMarkdown>{material.content}</ReactMarkdown>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return null;
+                        })
+                      )}
                     </div>
-                  );
-                })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Drawer open={isFileUploadDrawerOpen} onOpenChange={setIsFileUploadDrawerOpen}>
+        <DrawerContent className="sm:max-h-[80vh]">
+          <DrawerHeader>
+            <DrawerTitle>Upload File</DrawerTitle>
+          </DrawerHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="file-upload">Select File</Label>
+              <Input
+                id="file-upload"
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.json,.md"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const maxSize = 10 * 1024 * 1024;
+                    if (file.size > maxSize) {
+                      setUploadError('File size must be less than 10MB');
+                      setSelectedFile(null);
+                      return;
+                    }
+                    setUploadError('');
+                    setSelectedFile(file);
+                  }
+                }}
+                disabled={isUploading}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-muted-foreground">
+                Supported formats: PDF, DOC, DOCX, Images, JSON, MD (Max 10MB)
+              </p>
+            </div>
+
+            {selectedFile && (
+              <div className="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                <p className="text-sm font-medium text-cyan-900">{selectedFile.name}</p>
+                <p className="text-xs text-cyan-700">
+                  {(selectedFile.size / 1024).toFixed(2)} KB
+                </p>
               </div>
             )}
-          </div>
-        </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Pipeline
-            currentStep={currentStep}
-            onStepClick={handleStepClick}
-            pipelineStatus={currentPipelineStatus}
-          />
-          <div className="flex-1 overflow-auto p-6">
-            {renderContent()}
+            {uploadError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                {uploadError}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button
+                onClick={handleUpload}
+                disabled={isUploading || !selectedFile || !selectedReportId}
+                className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  'Upload'
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsFileUploadDrawerOpen(false);
+                  setSelectedFile(null);
+                  setUploadError('');
+                }}
+                disabled={isUploading}
+                className="flex-1 cursor-pointer"
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
-      </div>
+        </DrawerContent>
+      </Drawer>
+
+      <Dialog open={isProgressDialogOpen} onOpenChange={setIsProgressDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Progress</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Uploading...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-cyan-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {uploadMessage}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

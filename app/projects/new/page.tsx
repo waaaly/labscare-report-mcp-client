@@ -16,6 +16,8 @@ export default function NewProjectPage() {
   const { currentLab } = useLabStore();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [caseId, setCaseId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,6 +26,16 @@ export default function NewProjectPage() {
     
     if (!name.trim()) {
       setError('Project name is required');
+      return;
+    }
+
+    if (!projectId.trim()) {
+      setError('Project ID is required');
+      return;
+    }
+
+    if (!projectId.trim().startsWith('330')) {
+      setError('Project ID must start with "330"');
       return;
     }
 
@@ -44,6 +56,8 @@ export default function NewProjectPage() {
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || undefined,
+          limsPid: projectId.trim(),
+          caseId: caseId.trim() || undefined,
         }),
       });
 
@@ -127,6 +141,38 @@ export default function NewProjectPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="projectId">
+                Project ID <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="projectId"
+                placeholder="e.g., 330001"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                disabled={isCreating}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-muted-foreground">
+                Project ID must start with "330"
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="caseId">Case ID</Label>
+              <Input
+                id="caseId"
+                placeholder="e.g., CASE-2024-001"
+                value={caseId}
+                onChange={(e) => setCaseId(e.target.value)}
+                disabled={isCreating}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional: Associate this project with a case
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
@@ -151,7 +197,7 @@ export default function NewProjectPage() {
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"
-                disabled={isCreating || !name.trim()}
+                disabled={isCreating || !name.trim() || !projectId.trim()}
                 className="flex-1 cursor-pointer"
               >
                 <Save className="mr-2 h-4 w-4" />

@@ -76,6 +76,10 @@ export default function ProjectsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm">
+                     <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">LMIS Project ID</span>
+                      <span className="font-medium">{project.limsPid}</span>
+                    </div>
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Documents</span>
                       <span className="font-medium">{project.documents?.length ?? 0}</span>

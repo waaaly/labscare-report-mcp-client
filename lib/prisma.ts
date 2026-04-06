@@ -2,6 +2,12 @@ import { PrismaClient } from '@prisma/client';
 
 // 全局 Prisma 客户端实例
 let prisma: PrismaClient;
+// 注入 BigInt 序列化逻辑
+if (!(BigInt.prototype as any).toJSON) {
+  (BigInt.prototype as any).toJSON = function () {
+    return this.toString();
+  };
+}
 
 if (process.env.NODE_ENV === 'production') {
   // 生产环境直接创建新实例

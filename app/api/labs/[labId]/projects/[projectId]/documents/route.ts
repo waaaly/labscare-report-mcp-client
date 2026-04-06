@@ -33,11 +33,17 @@ async function validateFile(file: File): Promise<void> {
   const allowedTypes = [
     'application/pdf',
     'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'application/json',
+    'text/markdown'
   ];
 
   if (!allowedTypes.includes(file.type)) {
-    const error = new Error('Invalid file type. Only PDF, DOC, and DOCX files are allowed.') as ValidationError;
+    const error = new Error('Invalid file type. Only PDF, DOC, DOCX, images, JSON, and MD files are allowed.') as ValidationError;
     error.name = 'ValidationError';
     throw error;
   }
@@ -59,31 +65,46 @@ export async function POST(
     const { projectId } = await context.params;
     const { createId } = require('@paralleldrive/cuid2');
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const documentId = `doc${createId()}`
-    // 验证文件
-    await validateFile(file);
+    const files = formData.getAll('files') as File[];
     
-    // 写入临时文件
-    const tempFilePath = await writeTempFile(file);
+    if (files.length === 0) {
+      const error = new Error('No files provided') as ValidationError;
+      error.name = 'ValidationError';
+      throw error;
+    }
+    
+    const results = [];
+    
+    for (const file of files) {
+      // 验证文件
+      await validateFile(file);
+      
+      const documentId = `doc${createId()}`;
+      
+      // 写入临时文件
+      const tempFilePath = await writeTempFile(file);
 
-    // 发送消息到队列
-    const taskId = await sendDocumentProcessingTask(
-      documentId,
-      projectId,
-      file.name,
-      file.type,
-      tempFilePath
-    );
-    return NextResponse.json({
-      taskId,
-      id: documentId,
-      projectId: projectId,
-      name: file.name,
-      type: file.type,
-      status: 'PENDING',
-      message: 'Document upload started. Processing in background.'
-    }, { status: 202 });
+      // 发送消息到队列
+      const taskId = await sendDocumentProcessingTask(
+        documentId,
+        projectId,
+        file.name,
+        file.type,
+        tempFilePath
+      );
+      
+      results.push({
+        taskId,
+        id: documentId,
+        projectId: projectId,
+        name: file.name,
+        type: file.type,
+        status: 'PENDING',
+        message: 'Document upload started. Processing in background.'
+      });
+    }
+    
+    return NextResponse.json(results, { status: 202 });
  
   } catch (error: any) {
     // 细粒度错误处理
@@ -95,7 +116,7 @@ export async function POST(
     } else {
       console.error('Unexpected error:', error);
       return NextResponse.json(
-        { error: 'Failed to upload document' },
+        { error: 'Failed to upload documents' },
         { status: 500 }
       );
     }

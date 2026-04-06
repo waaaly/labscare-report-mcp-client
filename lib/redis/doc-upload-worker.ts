@@ -36,10 +36,6 @@ async function processor(job: Job) {
         deleteTempFile(task.tempFilePath);
         await updateDocumentProgress(task.documentId, 100, '存在同名文件!');
         return
-        // return NextResponse.json(
-        //   { error: 'File with the same name already exists' },
-        //   { status: 409 }
-        // );
       }
       await updateDocumentProgress(task.documentId, 5, '未发现同名文件,开始处理...');
       // 创建初始文档记录
@@ -57,23 +53,41 @@ async function processor(job: Job) {
       // 读取临时文件
       const buffer = await readTempFile(task.tempFilePath);
 
-      // 处理文件
-      await updateDocumentProgress(task.documentId, 20, '正在处理文件');
-      const { pdfBuffer, coverBuffer } = await processDocument(buffer, task.fileType, task.fileName);
-      await updateDocumentProgress(task.documentId, 50, '文件处理完成');
+      let url = '';
+      let pdf = null;
+      let coverUrl = null;
 
-      // 安全处理文件名
-      const safeFileName = sanitizeFileName(task.fileName);
-      const pdfFileName = safeFileName.replace(/\.(doc|docx)$/i, '.pdf');
-      const coverFileName = `${safeFileName.replace(/\.[^.]+$/, '')}_cover.jpg`;
-      await updateDocumentProgress(task.documentId, 60, '正在上传文件');
-      // 并行上传文件
-      const [url, pdf, coverUrl] = await Promise.all([
-        uploadFile(safeFileName, buffer, task.fileType),
-        uploadFile('pdf/' + pdfFileName, pdfBuffer, 'application/pdf'),
-        coverBuffer ? uploadFile('cover/' + coverFileName, coverBuffer, 'image/jpeg') : Promise.resolve(null)
-      ]);
-      await updateDocumentProgress(task.documentId, 80, '文件上传完成');
+      // 检查是否为doc或docx文件
+      const isDocFile = task.type === 'application/msword' || task.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      if (isDocFile) {
+        // 处理文件
+        await updateDocumentProgress(task.documentId, 20, '正在处理文件');
+        const { pdfBuffer, coverBuffer } = await processDocument(buffer, task.fileType, task.fileName);
+        await updateDocumentProgress(task.documentId, 50, '文件处理完成');
+
+        // 安全处理文件名
+        const safeFileName = sanitizeFileName(task.fileName);
+        const pdfFileName = safeFileName.replace(/\.(doc|docx)$/i, '.pdf');
+        const coverFileName = `${safeFileName.replace(/\.[^.]+$/, '')}_cover.jpg`;
+        await updateDocumentProgress(task.documentId, 60, '正在上传文件');
+        // 并行上传文件
+        const [fileUrl, pdfUrl, cover] = await Promise.all([
+          uploadFile(safeFileName, buffer, task.fileType),
+          uploadFile('pdf/' + pdfFileName, pdfBuffer, 'application/pdf'),
+          coverBuffer ? uploadFile('cover/' + coverFileName, coverBuffer, 'image/jpeg') : Promise.resolve(null)
+        ]);
+        url = fileUrl;
+        pdf = pdfUrl;
+        coverUrl = cover;
+      } else {
+        // 直接上传其他类型的文件
+        await updateDocumentProgress(task.documentId, 20, '正在上传文件');
+        const safeFileName = sanitizeFileName(task.fileName);
+        url = await uploadFile(safeFileName, buffer, task.type);
+        await updateDocumentProgress(task.documentId, 80, '文件上传完成');
+      }
+
       // 更新数据库
       await prisma.document.update({
         where: { id: task.documentId },

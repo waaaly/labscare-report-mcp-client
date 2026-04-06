@@ -8,30 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Queue } from 'bullmq';
 import { logger } from '@/lib/logger';
-
-// ===== Redis 配置 =====
-
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-
-function getRedisConfig() {
-  return {
-    host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
-    port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
-    password: process.env.REDIS_PASSWORD,
-    db: Number(process.env.REDIS_DB) || 0,
-    maxRetriesPerRequest: null,
-    // 增加重连保护
-    enableReadyCheck: true,
-  }
-}
-// 获取队列
-function getReportQueue(): Queue {
-  const redisConfig = getRedisConfig();
-  return new Queue('report', { connection: redisConfig });
-}
+import { getReportQueue } from '@/lib/redis/client';
 
 // ===== 类型定义 =====
 

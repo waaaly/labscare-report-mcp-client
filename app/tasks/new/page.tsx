@@ -33,10 +33,13 @@ import { cn } from '@/lib/utils';
 interface Material {
   id: string;
   name: string;
-  type: 'pdf' | 'json' | 'image' | 'description';
+  type: 'pdf' | 'json' | 'image' | 'markdown';
   size?: number;
   description?: string;
   thumbnail?: string;
+  url?: string;
+  content?: any;
+  storagePath?: string;
 }
 
 interface ReportTemplate {
@@ -62,7 +65,7 @@ export default function NewBatchTaskPage() {
     maxTokens: 4000,
     model: 'claude-sonnet-4.5',
   });
-
+  // const [reportTemplates]
   // Sample report templates
   const reportTemplates: ReportTemplate[] = [
     { id: 'blood-test', name: '血液检测报告', description: '血液生化指标分析报告' },
@@ -76,7 +79,7 @@ export default function NewBatchTaskPage() {
     const sampleMaterials: Material[] = [
       { id: '1', name: 'blood_test_report.pdf', type: 'pdf', size: 1024 * 500, description: '血液常规检测报告' },
       { id: '2', name: 'patient_info.json', type: 'json', size: 1024 * 2, description: '患者基本信息' },
-      { id: '3', name: 'report_template_desc.txt', type: 'description', size: 1024, description: '报告模板描述文件' },
+      { id: '3', name: 'report_template_desc.txt', type: 'markdown', size: 1024, description: '报告模板描述文件' },
       { id: '4', name: 'lab_result_sample.pdf', type: 'pdf', size: 1024 * 800, description: '实验室检测结果示例' },
       { id: '5', name: 'result_schema.json', type: 'json', size: 1024 * 3, description: '结果数据结构定义' },
     ];
@@ -114,7 +117,7 @@ export default function NewBatchTaskPage() {
         return <FileJson className="h-6 w-6 text-amber-500" />;
       case 'image':
         return <ImageIcon className="h-6 w-6 text-blue-500" />;
-      case 'description':
+      case 'markdown':
         return <FileText className="h-6 w-6 text-gray-500" />;
       default:
         return <FileText className="h-6 w-6 text-gray-400" />;
@@ -129,8 +132,8 @@ export default function NewBatchTaskPage() {
         return <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">JSON</Badge>;
       case 'image':
         return <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">图片</Badge>;
-      case 'description':
-        return <Badge variant="secondary" className="bg-gray-100 text-gray-700 border-gray-200">描述文件</Badge>;
+      case 'markdown':
+        return <Badge variant="secondary" className="bg-gray-100 text-gray-700 border-gray-200">Markdown</Badge>;
       default:
         return <Badge>未知</Badge>;
     }
