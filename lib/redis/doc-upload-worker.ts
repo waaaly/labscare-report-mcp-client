@@ -4,7 +4,7 @@ import { processDocument } from '@/lib/docx/converter';
 import { uploadFile } from '@/lib/minio/client';
 import prisma from '@/lib/prisma';
 import { sanitizeFileName } from '@/lib/utils';
-import { getRedisConfig, updateDocumentProgress } from './client';
+import { DOCUMENT_PROCESSOR_WORKER_NAME, getRedisConfig, updateDocumentProgress } from './client';
 import Pino from 'pino';
 import fs from 'fs';
 
@@ -225,7 +225,7 @@ export function startDocumentProcessor(logger: Pino.Logger): void {
   };
 
   workerInstance = new Worker<DocumentJobData>(
-    'document-processing',
+    DOCUMENT_PROCESSOR_WORKER_NAME,
     (job) => processor(job, logger),
     workerOptions
   );

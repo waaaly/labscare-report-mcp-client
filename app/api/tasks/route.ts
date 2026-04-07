@@ -130,11 +130,9 @@ export async function POST(request: NextRequest) {
 
         const taskData = {
           id: taskId,
-          userId: 'system',
           labId: taskItem.labId,
           name: taskItem.taskName,
           reportId: taskItem.reportId,
-          reportType: 'default',
           additionalInstructions: taskItem.additionalInstructions,
           status: 'waiting',
           progress: 0,

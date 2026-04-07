@@ -22,7 +22,7 @@ const logger = pino({
 // 你可以给单独的进程加一个子日志器
 const workerLogger = logger.child({ component: 'Worker', });
 import { startDocumentProcessor , shutdownDocumentProcessor } from '../lib/redis/doc-upload-worker';
-import { startTasksProcessor } from '../lib/redis/tasks-worker';
+import { startTasksProcessor , shutdownTasksProcessor } from '../lib/redis/tasks-worker';
 
 console.log('🚀 独立 Worker 进程正在启动...');
 
@@ -33,5 +33,6 @@ startTasksProcessor(workerLogger);
 // 处理优雅退出
 process.on('SIGTERM', () => {
   shutdownDocumentProcessor(workerLogger);
+  shutdownTasksProcessor(workerLogger);
   process.exit(0);
 });

@@ -44,6 +44,10 @@ const redisSubClient = RedisClientSingleton.getSubInstance();
 
 // 队列名称
 export const DOCUMENT_STATUS_PREFIX = 'document:status:';
+
+//worker名称
+export const DOCUMENT_PROCESSOR_WORKER_NAME = 'document-processing';
+export const TASK_PROCESSOR_WORKER_NAME = 'task-processing';
 // ===== Redis 配置 =====
 
 export function getRedisConfig() {
@@ -55,7 +59,7 @@ export function getRedisConfig() {
 }
 
 // 创建 BullMQ 队列
-const documentQueue = new Queue('document-processing', {
+const documentQueue = new Queue(DOCUMENT_PROCESSOR_WORKER_NAME, {
   connection: getRedisConfig(),
   
 });
@@ -82,7 +86,7 @@ export function getReportQueue(): Queue {
 
     logger.info({ redisConfig }, 'Initializing Report Queue');
 
-    reportQueue = new Queue('report', {
+    reportQueue = new Queue(TASK_PROCESSOR_WORKER_NAME, {
       connection: redisConfig,
       // 可以在这里添加默认配置，如 defaultJobOptions
     });

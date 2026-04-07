@@ -17,7 +17,6 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  tasks        Task[]
 }
 
 model Lab {
@@ -123,7 +122,6 @@ model ReportTemplate {
 
 model Task {
   id                     String         @id @default(cuid())
-  userId                 String         @map("user_id")
   labId                  String         @map("lab_id")
   name                   String
   reportId               String         @unique @map("report_id")
@@ -142,13 +140,11 @@ model Task {
   updatedAt              DateTime       @updatedAt
   logs                   TaskLog[]
   
-  user                   User           @relation(fields: [userId], references: [id])
   lab                    Lab            @relation(fields: [labId], references: [id])
   
   report    Report @relation(fields: [reportId], references: [id])
   reportTemplate         ReportTemplate? @relation(fields: [reportType], references: [id])
   
-  @@index([userId])
   @@index([labId])
   @@index([status])
   @@index([createdAt])

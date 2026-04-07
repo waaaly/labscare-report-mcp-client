@@ -25,7 +25,6 @@ import {
   RotateCcw,
   FileText,
   FileJson,
-  Image as ImageIcon,
   MoreVertical,
   Loader2,
   CheckCircle2,
@@ -48,17 +47,12 @@ import {
 type TaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 type TaskFilter = 'all' | 'running' | 'completed' | 'failed';
 
-interface MaterialInfo {
-  type: 'pdf' | 'json' | 'image' | 'other';
-  count: number;
-}
-
 interface Task {
   id: string;
   name: string;
   status: TaskStatus;
   progress: number;
-  materials: MaterialInfo[];
+  reportName?: string;
   createdAt: Date;
   completedAt?: Date;
   error?: string;
@@ -91,7 +85,6 @@ export default function TasksPage() {
   const loadTasks = async () => {
     setIsLoading(true);
     try {
-      // 从 API 获取任务列表
       const statusParam = filter !== 'all' ? filter : undefined;
       const url = new URL('/api/tasks', window.location.origin);
       if (statusParam) {
@@ -102,24 +95,14 @@ export default function TasksPage() {
         throw new Error('Failed to fetch tasks');
       }
       const data = await response.json();
-      // 转换数据格式
       const formattedTasks = data.map((task: any) => ({
         id: task.id,
         name: task.name,
-        status: task.status === 'waiting' ? 'running' : task.status,
+        status: (task.status === 'waiting' || task.status === 'active') ? 'running' : task.status,
         progress: task.progress,
-        materials: task.materials.reduce((acc: any[], material: any) => {
-          const existing = acc.find(m => m.type === material.type);
-          if (existing) {
-            existing.count++;
-          } else {
-            acc.push({ type: material.type, count: 1 });
-          }
-          return acc;
-        }, []),
+        reportName: task.reportName,
         createdAt: new Date(task.createdAt),
         completedAt: task.completedAt ? new Date(task.completedAt) : undefined,
-        error: task.error,
       }));
       setTasks(formattedTasks);
     } catch (error) {
@@ -238,19 +221,6 @@ export default function TasksPage() {
     return `${diffDays} 天前`;
   };
 
-  const getMaterialIcon = (type: string) => {
-    switch (type) {
-      case 'pdf':
-        return <FileText className="h-3 w-3 text-red-500" />;
-      case 'json':
-        return <FileJson className="h-3 w-3 text-amber-500" />;
-      case 'image':
-        return <ImageIcon className="h-3 w-3 text-blue-500" />;
-      default:
-        return <FileText className="h-3 w-3 text-gray-400" />;
-    }
-  };
-
   const getStatusBadge = (status: TaskStatus) => {
     switch (status) {
       case 'running':
@@ -282,10 +252,6 @@ export default function TasksPage() {
           </Badge>
         );
     }
-  };
-
-  const getTotalMaterialCount = (materials: MaterialInfo[]) => {
-    return materials.reduce((acc, m) => acc + m.count, 0);
   };
 
   const getFilteredTasks = () => {
@@ -490,7 +456,7 @@ export default function TasksPage() {
                         </TableHead>
                         <TableHead className="w-32">任务 ID</TableHead>
                         <TableHead>任务名称</TableHead>
-                        <TableHead className="w-40">物料文件</TableHead>
+                        <TableHead className="w-40">关联报告</TableHead>
                         <TableHead className="w-32">状态</TableHead>
                         <TableHead className="w-48">进度</TableHead>
                         <TableHead className="w-40">创建时间</TableHead>
@@ -528,29 +494,11 @@ export default function TasksPage() {
                             >
                               {task.name}
                             </Link>
-                            {task.error && (
-                              <p className="text-xs text-red-600 mt-0.5">{task.error}</p>
-                            )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1">
-                              {task.materials.slice(0, 3).map((m, i) => (
-                                <div key={i} className="flex items-center">
-                                  {getMaterialIcon(m.type)}
-                                  <span className="text-xs text-gray-600 ml-0.5">
-                                    {m.count}
-                                  </span>
-                                </div>
-                              ))}
-                              {task.materials.length > 3 && (
-                                <span className="text-xs text-gray-500 ml-1">
-                                  +{getTotalMaterialCount(task.materials) - task.materials.slice(0, 3).reduce((acc, m) => acc + m.count, 0)}
-                                </span>
-                              )}
-                              <Badge variant="secondary" className="ml-2">
-                                {getTotalMaterialCount(task.materials)}
-                              </Badge>
-                            </div>
+                            <span className="text-sm text-gray-600">
+                              {task.reportName || '-'}
+                            </span>
                           </TableCell>
                           <TableCell>
                             {getStatusBadge(task.status)}

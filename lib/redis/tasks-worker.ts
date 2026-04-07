@@ -1,5 +1,5 @@
 /**
- * Batch Worker - BullMQ Worker 处理批量任务
+ * Tasks Worker - BullMQ Worker 处理任务
  *
  * 功能：
  * 1. 从 BullMQ 队列中获取任务
@@ -8,69 +8,63 @@
  * 4. 错误处理和重试
  */
 
-import { Worker, Job } from "bullmq";
+import { Worker, Job, WorkerOptions } from "bullmq";
 import { createAgentInstance } from "../llm/agent-factory";
 import {
   publishStreamChunk,
   markStreamComplete,
   markStreamFailed,
 } from "../queue/stream-publisher";
-import { getRedisConfig } from "./client";
+import { getRedisConfig, TASK_PROCESSOR_WORKER_NAME } from "./client";
 import Pino from 'pino';
 
-const redisConfig = getRedisConfig();
+// ==================== 类型定义 ====================
 
-// ===== Worker 配置 =====
-
-const WORKER_CONCURRENCY = Number(process.env.WORKER_CONCURRENCY || 3);
-
-// ===== 类型定义 =====
-
-export interface ReportTaskData {
-  jobId: string;
-  batchId: string;
-  prompt: string;
-  contextJson?: string;
-  messagesJson?: string;
-  files?: Array<{
-    name: string;
-    type: 'image' | 'json' | 'md';
-    content: string;
-    dataUrl?: string;
-  }>;
+export interface TaskProcessData {
+  taskId: string;
+  name: string;
+  reportId: string;
+  reportName: string;
+  additionalInstructions: string;
+  documentUrls: string[];
+  advancedParams: {
+    temperature: number;
+    maxTokens: number;
+    model: string;
+  };
+  createdAt: number;
 }
 
-export interface ReportTaskResult {
+export interface TaskProcessResult {
   success: boolean;
   duration: number;
   tokensUsed?: number;
 }
 
-// ===== 创建 Worker =====
-
-let worker: Worker<ReportTaskData, ReportTaskResult> | null = null;
-
-// ===== Worker 事件处理 =====
-
-function setupWorkerEvents(worker: Worker<ReportTaskData, ReportTaskResult>,logger: Pino.Logger) {
-  worker.on('error', (err) => {
-    logger.error({ err }, '[Worker] Worker error');
-  });
-
-  worker.on('completed', (job) => {
-    logger.info({ jobId: job.id, attempts: job.attemptsMade, processedOn: job.processedOn, finishedOn: job.finishedOn }, `[Worker] Job completed: ${job.id}`);
-  });
-
-  worker.on('failed', (job, err) => {
-    logger.error({ jobId: job?.id, attempts: job?.attemptsMade, error: err.message }, `[Worker] Job failed: ${job?.id}`);
-  });
-
-  worker.on('progress', (job, progress) => {
-    logger.debug({ jobId: job.id, progress }, `[Worker] Job progress: ${job.id}`);
-  });
+// 全局单例（防止多实例启动）
+declare global {
+  var taskWorker: Worker | undefined;
 }
 
-// ===== 辅助函数 =====
+// ==================== 工具函数 ====================
+
+async function handleError(
+  taskId: string,
+  error: unknown,
+  logger: Pino.Logger,
+  stage: string
+): Promise<void> {
+  const err = error as Error;
+  const msg = `${stage}: ${err.message}`;
+  
+  logger.error({ taskId, error: err.message, stack: err.stack }, `[Worker] ${msg}`);
+  
+  try {
+    await markStreamFailed(taskId, err);
+  } catch (cleanupErr) {
+    logger.error({ taskId, error: cleanupErr }, `[Worker] 清理失败`);
+  }
+}
 
 /**
  * 构建消息
@@ -86,11 +80,10 @@ async function buildMessages(
 
   const messages: Array<any> = [];
 
-  // 处理历史消息
   if (messagesJson) {
     try {
       const history = JSON.parse(messagesJson);
-      const recentMessages = history.slice(-10); // 只取最后10条
+      const recentMessages = history.slice(-10);
 
       for (const m of recentMessages) {
         let cleanContent = (m.content ?? '')
@@ -110,13 +103,11 @@ async function buildMessages(
     }
   }
 
-  // 构建当前消息
   let userText = prompt || '';
   if (contextJson) {
     userText += `\n\n[Context]\n\`\`\`json\n${contextJson}\n\`\`\`\n`;
   }
 
-  // 处理文件
   const messageContent: any[] = [{ type: 'text', text: userText.trim() }];
 
   if (files) {
@@ -139,7 +130,7 @@ async function buildMessages(
  * 执行 Agent 并发布流式结果
  */
 async function executeAgentStreaming(
-  jobId: string,
+  taskId: string,
   agent: any,
   messages: any[],
   logger: Pino.Logger
@@ -160,40 +151,36 @@ async function executeAgentStreaming(
         const [messageChunk, metadata] = chunk as [any, any];
         const currentNode = metadata.langgraph_node;
 
-        // 提取深度思考
         const reasoning = messageChunk.additional_kwargs?.reasoning_content;
         if (reasoning) {
-          await publishStreamChunk(jobId, {
+          await publishStreamChunk(taskId, {
             type: "thought",
             text: reasoning,
           });
         }
 
-        // 提取正式回答
         if (messageChunk?.content && typeof messageChunk.content === "string") {
           if (firstTokenTime === null) {
             firstTokenTime = Date.now();
-            await publishStreamChunk(jobId, {
+            await publishStreamChunk(taskId, {
               type: "metrics",
               ttft: firstTokenTime,
             });
           }
 
           const messageType = currentNode === "tools" ? "thought" : "content";
-          await publishStreamChunk(jobId, {
+          await publishStreamChunk(taskId, {
             type: messageType,
             node: currentNode,
             text: messageChunk.content,
           });
 
-          // 估算 token 数量（粗略估算）
           tokensUsed += Math.ceil(messageChunk.content.length / 4);
         }
 
-        // 提取工具调用
         if (messageChunk?.tool_calls && messageChunk.tool_calls.length > 0) {
           for (const tc of messageChunk.tool_calls) {
-            await publishStreamChunk(jobId, {
+            await publishStreamChunk(taskId, {
               type: "tool_call",
               tool: tc.name,
               message: `正在调用: ${tc.name}...`,
@@ -201,7 +188,7 @@ async function executeAgentStreaming(
           }
         }
       } else if (streamMode === "updates") {
-        await publishStreamChunk(jobId, {
+        await publishStreamChunk(taskId, {
           type: "status",
           text: "工具执行完成，正在整合结果...",
         });
@@ -212,71 +199,44 @@ async function executeAgentStreaming(
   return { tokensUsed };
 }
 
-// ===== 优雅关闭 =====
-
-process.on('SIGTERM', async (logger: Pino.Logger) => {
-  logger.info('[Worker] 收到 SIGTERM，正在关闭...');
-  if (worker) {
-    await worker.close();
-  }
-  process.exit(0);
-});
-
-process.on('SIGINT', async (logger: Pino.Logger) => {
-  logger.info('[Worker] 收到 SIGINT，正在关闭...');
-  if (worker) {
-    await worker.close();
-  }
-  process.exit(0);
-});
-
 /**
  * 模拟 LLM 调用过程
- * @param jobId 任务 ID
- * @param prompt 提示词
  */
-async function simulateLLMCall(jobId: string, prompt: string): Promise<void> {
-  // 总模拟时间：5-7分钟（300000-420000毫秒）
+async function simulateLLMCall(taskId: string, prompt: string, logger: Pino.Logger): Promise<void> {
   const totalDuration = Math.floor(Math.random() * 120000) + 300000;
   const startTime = Date.now();
 
-  // 模拟思考过程（1-2分钟）
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "thought",
     text: "正在分析报表脚本需求...",
   });
   await new Promise(resolve => setTimeout(resolve, Math.random() * 60000 + 60000));
 
-  // 模拟工具调用（30-60秒）
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "tool_call",
     tool: "get_labscare_script_rules",
     message: "正在调用: get_labscare_script_rules...",
   });
   await new Promise(resolve => setTimeout(resolve, Math.random() * 30000 + 30000));
 
-  // 模拟工具执行结果（1-2分钟）
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "thought",
     text: "已获取 LabsCare 报表脚本规范，开始分析规范内容...",
   });
   await new Promise(resolve => setTimeout(resolve, Math.random() * 60000 + 60000));
 
-  // 模拟分析模板（30-60秒）
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "thought",
     text: "正在分析报告模板和占位符...",
   });
   await new Promise(resolve => setTimeout(resolve, Math.random() * 30000 + 30000));
 
-  // 模拟生成过程（1-2分钟）
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "thought",
     text: "开始生成报表脚本...",
   });
   await new Promise(resolve => setTimeout(resolve, Math.random() * 60000 + 60000));
 
-  // 模拟生成结果（1-2分钟）
   const mockScript = `
 // 报表脚本 - 基于模拟生成
 const reportScript = {
@@ -284,102 +244,29 @@ const reportScript = {
   version: "1.0.0",
   description: "生成实验室报告",
   fields: [
-    {
-      name: "patientId",
-      type: "string",
-      source: "patient.id",
-      required: true
-    },
-    {
-      name: "patientName",
-      type: "string",
-      source: "patient.name",
-      required: true
-    },
-    {
-      name: "testResults",
-      type: "array",
-      source: "tests.results",
-      required: true,
-      process: function(results) {
-        return results.map(test => ({
-          name: test.name,
-          value: test.value,
-          unit: test.unit,
-          referenceRange: test.referenceRange,
-          status: this.calculateStatus(test.value, test.referenceRange)
-        }));
-      }
-    },
-    {
-      name: "reportDate",
-      type: "date",
-      source: "metadata.reportDate",
-      format: "YYYY-MM-DD"
-    },
-    {
-      name: "labName",
-      type: "string",
-      source: "metadata.labName"
-    }
+    { name: "patientId", type: "string", source: "patient.id", required: true },
+    { name: "patientName", type: "string", source: "patient.name", required: true },
+    { name: "reportDate", type: "date", source: "metadata.reportDate", format: "YYYY-MM-DD" },
+    { name: "labName", type: "string", source: "metadata.labName" }
   ],
-  
-  calculateStatus: function(value, referenceRange) {
-    if (!referenceRange) return "normal";
-    
-    const [min, max] = referenceRange.split('-').map(Number);
-    if (value < min || value > max) {
-      return "abnormal";
-    }
-    return "normal";
-  },
-  
   generate: function(data) {
     return {
       patientId: data.patient.id,
       patientName: data.patient.name,
-      reportDate: this.formatDate(data.metadata.reportDate),
-      labName: data.metadata.labName,
-      testResults: this.fields.find(f => f.name === "testResults").process(data.tests.results),
-      summary: this.generateSummary(data.tests.results)
+      reportDate: data.metadata.reportDate,
+      labName: data.metadata.labName
     };
-  },
-  
-  formatDate: function(date) {
-    if (!date) return "";
-    const d = new Date(date);
-    return d.toISOString().split('T')[0];
-  },
-  
-  generateSummary: function(results) {
-    const abnormalCount = results.filter(test => {
-      const referenceRange = test.referenceRange;
-      if (!referenceRange) return false;
-      const [min, max] = referenceRange.split('-').map(Number);
-      return test.value < min || test.value > max;
-    }).length;
-    
-    if (abnormalCount === 0) {
-      return "所有检测结果正常";
-    } else if (abnormalCount === 1) {
-      return "有一项检测结果异常";
-    } else {
-      return "有 " + abnormalCount + " 项检测结果异常";
-    }
   }
 };
-
-// 导出脚本
 module.exports = reportScript;
 `;
 
-  // 分段发送生成结果（30-60秒）
   const chunks = mockScript.split('\n');
   const chunkDelay = Math.floor((Math.random() * 30000 + 30000) / chunks.length);
 
   for (const chunk of chunks) {
     if (chunk.trim()) {
-      await publishStreamChunk(jobId, {
+      await publishStreamChunk(taskId, {
         type: "content",
         text: chunk + '\n',
       });
@@ -387,112 +274,152 @@ module.exports = reportScript;
     }
   }
 
-  // 模拟最终检查（30-60秒）
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "thought",
     text: "正在检查生成的脚本...",
   });
   await new Promise(resolve => setTimeout(resolve, Math.random() * 30000 + 30000));
 
-  // 模拟完成
-  await publishStreamChunk(jobId, {
+  await publishStreamChunk(taskId, {
     type: "thought",
     text: "脚本生成完成，准备返回结果...",
   });
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // 确保总时间在5-7分钟之间
   const elapsed = Date.now() - startTime;
   if (elapsed < totalDuration) {
     await new Promise(resolve => setTimeout(resolve, totalDuration - elapsed));
   }
 }
-/**
- * 启动文档处理器
- */
+
+// ==================== 核心处理器 ====================
+
+async function processor(job: Job<TaskProcessData>, logger: Pino.Logger): Promise<TaskProcessResult> {
+  const { taskId, name, reportId, reportName, additionalInstructions, documentUrls, advancedParams } = job.data;
+  const jobId = job.id;
+  const startTime = Date.now();
+
+  const taskLogger = logger.child({
+    component: "TasksWorker",
+    jobId,
+    taskId,
+    reportId,
+    reportName
+  });
+
+  try {
+    taskLogger.info(`🚀 开始处理任务`);
+
+    const useMock = process.env.USE_MOCK_LLM === 'true';
+
+    if (useMock) {
+      taskLogger.info(`使用模拟 LLM 模式`);
+
+      await simulateLLMCall(taskId, additionalInstructions || name, taskLogger);
+
+      const duration = Date.now() - startTime;
+      await markStreamComplete(taskId, {
+        type: "metrics",
+        total_duration: duration,
+        tokensUsed: 123,
+      });
+
+      taskLogger.info(`✅ 模拟任务完成，耗时 ${(duration / 1000).toFixed(1)}s`);
+
+      return {
+        success: true,
+        duration,
+        tokensUsed: 123,
+      };
+    } else {
+      const agent = await createAgentInstance();
+
+      const prompt = additionalInstructions || `请根据报告 ${reportName} 生成分析结果`;
+      const messages = await buildMessages(prompt, taskLogger, undefined, undefined, 
+        documentUrls.map(url => ({ name: url, type: 'url', content: url }))
+      );
+
+      const result = await executeAgentStreaming(taskId, agent, messages, taskLogger);
+
+      const duration = Date.now() - startTime;
+      await markStreamComplete(taskId, {
+        type: "metrics",
+        total_duration: duration,
+        ...result,
+      });
+
+      taskLogger.info(`✅ 任务完成，耗时 ${(duration / 1000).toFixed(1)}s`);
+
+      return {
+        success: true,
+        duration,
+        ...result,
+      };
+    }
+
+  } catch (error: any) {
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    taskLogger.error(`❌ 任务处理失败，耗时 ${duration}s | 错误: ${error.message}`);
+    await handleError(taskId, error, taskLogger, '任务处理异常');
+    throw error;
+  }
+}
+
+// ==================== Worker 启动 ====================
+
+let workerInstance: Worker | null = null;
+
 export function startTasksProcessor(logger: Pino.Logger): void {
-  if (worker) {
+  if (global.taskWorker) {
     logger.info('Tasks processor already started');
     return;
   }
-  
-  // 创建 BullMQ Worker
-  worker = new Worker<ReportTaskData, ReportTaskResult>(
-    "report",
-    async (job: Job<ReportTaskData>) => {
-      const { jobId, batchId, prompt, contextJson, messagesJson, files } = job.data;
-      const startTime = Date.now();
 
-      logger.info({ jobId, batchId, prompt: prompt.substring(0, 100), filesCount: files?.length || 0 }, `[Worker] 开始处理任务: ${jobId}`);
+  const workerOptions: WorkerOptions = {
+    connection: getRedisConfig(),
+    concurrency: Number(process.env.WORKER_CONCURRENCY || 3),
+    lockDuration: 600_000,
+    stalledInterval: 30_000,
+    maxStalledCount: 2,
+  };
 
-      try {
-        // 检查是否启用模拟模式
-        const useMock = process.env.USE_MOCK_LLM === 'true';
-
-        if (useMock) {
-          logger.info({ jobId }, `[Worker] 使用模拟 LLM 模式`);
-
-          // 模拟 LLM 调用过程
-          await simulateLLMCall(jobId, prompt);
-
-          // 标记完成
-          const duration = Date.now() - startTime;
-          await markStreamComplete(jobId, {
-            type: "metrics",
-            total_duration: duration,
-            tokensUsed: 123,
-          });
-
-          logger.info({ jobId, duration }, `[Worker] 模拟任务完成: ${jobId}`);
-
-          return {
-            success: true,
-            duration,
-          };
-        } else {
-          // 1. 创建 Agent 实例
-          const agent = await createAgentInstance();
-
-          // 2. 构建消息
-          const messages = await buildMessages(prompt, logger, contextJson, messagesJson, files);
-
-          // 3. 执行 Agent 并发布流式结果
-          const result = await executeAgentStreaming(jobId, agent, messages, logger);
-
-          // 4. 标记完成
-          const duration = Date.now() - startTime;
-          await markStreamComplete(jobId, {
-            type: "metrics",
-            total_duration: duration,
-            ...result,
-          });
-
-          logger.info({ jobId, duration }, `[Worker] 任务完成: ${jobId}`);
-
-          return {
-            success: true,
-            duration,
-          };
-        }
-
-      } catch (error) {
-        const err = error as Error;
-        logger.error({ jobId, error: err.message, stack: err.stack }, `[Worker] 任务失败: ${jobId}`);
-
-        await markStreamFailed(jobId, err);
-        throw error; // 让 BullMQ 处理重试
-      }
-    },
-    {
-      concurrency: WORKER_CONCURRENCY,
-      connection: redisConfig,
-    }
+  workerInstance = new Worker<TaskProcessData, TaskProcessResult>(
+    TASK_PROCESSOR_WORKER_NAME,
+    (job) => processor(job, logger),
+    workerOptions
   );
-  
-  // 设置 Worker 事件
-  setupWorkerEvents(worker, logger);
-  
-  logger.info('Tasks processor started with BullMQ');
+
+  const events = ['active', 'completed', 'failed', 'progress', 'error', 'stalled'] as const;
+  events.forEach((event) => {
+    workerInstance!.on(event, (job: Job, error?: Error) => {
+      try {
+        if (event === 'error') {
+          logger.error(`Worker error: ${job}`);
+        } else if (event === 'failed') {
+          logger.error(`Job ${job?.id || 'unknown'} failed: ${error?.message}`);
+        } else {
+          logger.info(`Job ${job?.id} ${event}`);
+        }
+      } catch (e) {
+        logger.error(`Event handler error (${event}): ${e}`);
+      }
+    });
+  });
+
+  global.taskWorker = workerInstance;
+  logger.info(`PID: ${process.pid} Tasks processor started with BullMQ`);
 }
-// 导出 worker（用于测试）
-export { worker };
+
+// ==================== Graceful Shutdown ====================
+
+export async function shutdownTasksProcessor(logger: Pino.Logger): Promise<void> {
+  if (global.taskWorker) {
+    logger.info('Shutting down tasks worker...');
+    await global.taskWorker.close();
+    global.taskWorker = undefined;
+    logger.info('Tasks worker closed');
+  }
+}
+
+// 导出
+export { workerInstance as worker };
