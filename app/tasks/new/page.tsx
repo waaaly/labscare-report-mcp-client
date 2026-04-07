@@ -28,6 +28,7 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLabStore } from '@/store/lab-store';
 
 // Types
 interface Material {
@@ -42,6 +43,38 @@ interface Material {
   storagePath?: string;
 }
 
+interface Document {
+  id: string;
+  name: string;
+  url: string;
+  content: any;
+  size?: number;
+  type: string;
+  status: string;
+  createdAt: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+}
+
+interface Task {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+}
+
+interface Report {
+  id: string;
+  name: string;
+  createdAt: string;
+  project: Project;
+  documents: Document[];
+  task?: Task;
+}
+
 interface ReportTemplate {
   id: string;
   name: string;
@@ -50,29 +83,84 @@ interface ReportTemplate {
 
 export default function NewBatchTaskPage() {
   const router = useRouter();
+  const { currentLab } = useLabStore();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Form state
-  const [taskName, setTaskName] = useState('');
-  const [reportType, setReportType] = useState('');
-  const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [advancedParams, setAdvancedParams] = useState({
-    temperature: 0.7,
-    maxTokens: 4000,
-    model: 'claude-sonnet-4.5',
-  });
-  // const [reportTemplates]
-  // Sample report templates
-  const reportTemplates: ReportTemplate[] = [
-    { id: 'blood-test', name: '血液检测报告', description: '血液生化指标分析报告' },
-    { id: 'urinalysis', name: '尿常规报告', description: '尿液分析指标报告' },
-    { id: 'comprehensive', name: '综合检测报告', description: '多项目综合分析报告' },
-    { id: 'custom', name: '自定义报告', description: '自定义格式的分析报告' },
-  ];
+  // Reports state
+  const [reports, setReports] = useState<Report[]>([]);
+  const [selectedReports, setSelectedReports] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Task config for each report
+  interface TaskConfig {
+    taskName: string;
+    additionalInstructions: string;
+    documentUrls: string[];
+    advancedParams: {
+      temperature: number;
+      maxTokens: number;
+      model: string;
+    };
+  }
+
+  const [taskConfigs, setTaskConfigs] = useState<Record<string, TaskConfig>>({});
+
+  // Initialize task config when reports are selected
+  useEffect(() => {
+    const newConfigs = { ...taskConfigs };
+    
+    selectedReports.forEach(reportId => {
+      if (!newConfigs[reportId]) {
+        const report = reports.find(r => r.id === reportId);
+        const documentUrls = report?.documents.map(doc => doc.url).filter(Boolean) || [];
+        newConfigs[reportId] = {
+          taskName: report?.name || '',
+          additionalInstructions: '',
+          documentUrls,
+          advancedParams: {
+            temperature: 0.7,
+            maxTokens: 4000,
+            model: 'claude-sonnet-4.5',
+          },
+        };
+      }
+    });
+    
+    Object.keys(newConfigs).forEach(reportId => {
+      if (!selectedReports.has(reportId)) {
+        delete newConfigs[reportId];
+      }
+    });
+    
+    setTaskConfigs(newConfigs);
+  }, [selectedReports, reports]);
+
+  // Fetch reports from API
+  useEffect(() => {
+    const fetchReports = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`/api/labs/${currentLab?.id}/reports`);
+        if (response.ok) {
+          const data = await response.json();
+          setReports(data);
+        } else {
+          toast.error('获取报告列表失败');
+        }
+      } catch (error) {
+        console.error('Error fetching reports:', error);
+        toast.error('获取报告时发生错误');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReports();
+  }, []);
 
   // Sample materials for demo
   useEffect(() => {
@@ -109,30 +197,54 @@ export default function NewBatchTaskPage() {
     }
   };
 
-  const getFileIcon = (type: Material['type']) => {
+  const handleToggleReport = (reportId: string) => {
+    const newSelected = new Set(selectedReports);
+    if (newSelected.has(reportId)) {
+      newSelected.delete(reportId);
+    } else {
+      newSelected.add(reportId);
+    }
+    setSelectedReports(newSelected);
+  };
+
+  const handleSelectAllReports = (checked: boolean) => {
+    if (checked) {
+      setSelectedReports(new Set(reports.map(r => r.id)));
+    } else {
+      setSelectedReports(new Set());
+    }
+  };
+
+  const getFileIcon = (type: Document['type']) => {
     switch (type) {
       case 'pdf':
         return <FileText className="h-6 w-6 text-red-500" />;
       case 'json':
+      case 'application/json':
         return <FileJson className="h-6 w-6 text-amber-500" />;
       case 'image':
+      case 'image/png':
         return <ImageIcon className="h-6 w-6 text-blue-500" />;
       case 'markdown':
+      case 'application/octet-stream':
         return <FileText className="h-6 w-6 text-gray-500" />;
       default:
         return <FileText className="h-6 w-6 text-gray-400" />;
     }
   };
 
-  const getTypeBadge = (type: Material['type']) => {
+  const getTypeBadge = (type: Document['type']) => {
     switch (type) {
       case 'pdf':
         return <Badge variant="secondary" className="bg-red-100 text-red-700 border-red-200">PDF</Badge>;
       case 'json':
+      case 'application/json':
         return <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">JSON</Badge>;
       case 'image':
+      case 'image/png':
         return <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">图片</Badge>;
       case 'markdown':
+      case 'application/octet-stream':
         return <Badge variant="secondary" className="bg-gray-100 text-gray-700 border-gray-200">Markdown</Badge>;
       default:
         return <Badge>未知</Badge>;
@@ -169,28 +281,33 @@ export default function NewBatchTaskPage() {
   };
 
   const handleStartBatch = async () => {
-    if (!taskName.trim()) {
-      toast.error('请输入任务名称');
+    if (selectedReports.size === 0) {
+      toast.error('请至少选择一个报告');
       return;
     }
 
-    if (selectedMaterials.size === 0) {
-      toast.error('请至少选择一个物料');
+    const invalidConfigs = Object.entries(taskConfigs).filter(
+      ([_, config]) => !config.taskName.trim()
+    );
+    if (invalidConfigs.length > 0) {
+      toast.error('请为所有选中的报告填写任务名称');
       return;
     }
 
     try {
-      // Call API to create batch task
+      const tasks = reports
+        .filter(r => selectedReports.has(r.id))
+        .map(report => ({
+          reportId: report.id,
+          reportName: report.name,
+          labId: currentLab?.id,
+          ...taskConfigs[report.id],
+        }));
+
       const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: taskName,
-          reportType,
-          additionalInstructions,
-          materials: getSelectedMaterials(),
-          advancedParams,
-        }),
+        body: JSON.stringify({ tasks }),
       });
 
       if (response.ok) {
@@ -211,8 +328,8 @@ export default function NewBatchTaskPage() {
     toast.success('已复制到剪贴板');
   };
 
-  const handlePreview = (material: Material) => {
-    toast.info(`预览物料: ${material.name}`);
+  const handlePreview = (document: Document) => {
+    toast.info(`预览文档: ${document.name}`);
   };
 
   return (
@@ -240,22 +357,22 @@ export default function NewBatchTaskPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Materials (38%) */}
+        {/* Left Panel - Reports (38%) */}
         <div className="w-[38%] border-r border-gray-200 flex flex-col bg-muted/20">
           <Card className="flex-1 rounded-none border-0 shadow-none m-0">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between mb-4">
                 <CardTitle className="text-lg">
-                  已选物料（{selectedMaterials.size} 个）
+                  已选报告（{selectedReports.size} 个）
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    checked={selectedMaterials.size === filteredMaterials.length && filteredMaterials.length > 0}
-                    onCheckedChange={handleSelectAll}
-                    id="select-all"
+                    checked={selectedReports.size === reports.length && reports.length > 0}
+                    onCheckedChange={handleSelectAllReports}
+                    id="select-all-reports"
                     className="cursor-pointer"
                   />
-                  <Label htmlFor="select-all" className="text-sm cursor-pointer">
+                  <Label htmlFor="select-all-reports" className="text-sm cursor-pointer">
                     全选
                   </Label>
                 </div>
@@ -264,105 +381,127 @@ export default function NewBatchTaskPage() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="搜索物料..."
+                    placeholder="搜索报告..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 cursor-pointer"
                   />
                 </div>
-                <Button
-                  onClick={() => setIsUploadDialogOpen(true)}
-                  className="bg-[#0891B2] hover:bg-[#07849F] text-white cursor-pointer"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  上传新物料
-                </Button>
               </div>
             </CardHeader>
 
             <CardContent className="flex-1 overflow-auto p-4 pt-0">
-              <div className="grid grid-cols-2 gap-3">
-                {filteredMaterials.map((material) => {
-                  const isSelected = selectedMaterials.has(material.id);
-                  return (
-                    <Card
-                      key={material.id}
-                      className={cn(
-                        "group hover:shadow-md transition-all duration-200 cursor-pointer border-2",
-                        isSelected ? "border-[#0891B2] bg-cyan-50/50" : "border-gray-200"
-                      )}
-                      onClick={() => handleToggleMaterial(material.id)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-start gap-2 flex-1 min-w-0">
-                            {getFileIcon(material.type)}
+              {isLoading ? (
+                <div className="flex items-center justify-center h-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-[#0891B2]" />
+                </div>
+              ) : reports.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+                  <FileText className="h-12 w-12 text-gray-300 mb-3" />
+                  <p className="text-sm text-gray-500 mb-2">没有找到报告</p>
+                  <p className="text-xs text-gray-400">该实验室下暂无报告数据</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reports.map((report) => {
+                    const isSelected = selectedReports.has(report.id);
+                    return (
+                      <Card
+                        key={report.id}
+                        className={cn(
+                          "group hover:shadow-md transition-all duration-200 cursor-pointer border-2",
+                          isSelected ? "border-[#0891B2] bg-cyan-50/50" : "border-gray-200"
+                        )}
+                        onClick={() => handleToggleReport(report.id)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate" title={material.name}>
-                                {material.name}
-                              </p>
-                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                {getTypeBadge(material.type)}
-                                <span className="text-xs text-gray-500">
-                                  {formatFileSize(material.size)}
-                                </span>
+                              <div className="flex items-center gap-2 mb-2">
+                                <p className="text-sm font-medium text-gray-900 truncate" title={report.name}>
+                                  {report.name}
+                                </p>
+                                <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">
+                                  {report.project.name}
+                                </Badge>
                               </div>
+                              <p className="text-xs text-gray-500 mb-3">
+                                创建时间: {new Date(report.createdAt).toLocaleString()}
+                              </p>
                             </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
                             <Checkbox
                               checked={isSelected}
-                              onCheckedChange={() => handleToggleMaterial(material.id)}
+                              onCheckedChange={() => handleToggleReport(report.id)}
                               onClick={(e) => e.stopPropagation()}
                               className="cursor-pointer"
                             />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePreview(material);
-                              }}
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Button>
                           </div>
-                        </div>
-                        {material.description && (
-                          <p className="text-xs text-gray-600 line-clamp-2 mt-2">
-                            {material.description}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              {filteredMaterials.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-                  <FileText className="h-12 w-12 text-gray-300 mb-3" />
-                  <p className="text-sm text-gray-500 mb-2">没有找到物料</p>
-                  <p className="text-xs text-gray-400">尝试调整搜索条件或上传新物料</p>
+                          {report.documents.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs font-medium text-gray-700 mb-2">文档:</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {report.documents.map((document) => (
+                                  <Card
+                                    key={document.id}
+                                    className={cn(
+                                      "group hover:shadow-md transition-all duration-200 cursor-pointer border-2",
+                                      isSelected ? "border-[#0891B2] bg-cyan-50/50" : "border-gray-200"
+                                    )}
+                                  >
+                                    <CardContent className="p-3">
+                                      <div className="flex items-start justify-between mb-2">
+                                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                                          {getFileIcon(document.type)}
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 truncate" title={document.name}>
+                                              {document.name}
+                                            </p>
+                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                              {getTypeBadge(document.type)}
+                                              <span className="text-xs text-gray-500">
+                                                {formatFileSize(document.size)}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handlePreview(document);
+                                            }}
+                                          >
+                                            <Eye className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {report.documents.length === 0 && <p className="text-xs text-gray-500 mt-1">该报告暂无文档</p>}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
 
             {/* Bottom Summary Bar */}
-            {selectedMaterials.size > 0 && (
+            {selectedReports.size > 0 && (
               <div className="p-4 border-t border-gray-200 bg-white">
                 <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-4">
-                    <span className="text-gray-600">
-                      已选 <strong>{selectedMaterials.size}</strong> 个物料
-                    </span>
-                    <span className="text-gray-600">
-                      总大小 <strong>{formatFileSize(getTotalSize())}</strong>
-                    </span>
-                  </div>
                   <span className="text-gray-600">
-                    预计时长 <strong>{getEstimatedTime()}</strong>
+                    已选 <strong>{selectedReports.size}</strong> 个报告
+                  </span>
+                  <span className="text-gray-600">
+                    预计时长 <strong>{selectedReports.size * 2} 分钟</strong>
                   </span>
                 </div>
               </div>
@@ -378,139 +517,136 @@ export default function NewBatchTaskPage() {
             </CardHeader>
 
             <CardContent className="space-y-6">
-              {/* Task Name */}
-              <div className="space-y-2">
-                <Label htmlFor="task-name" className="text-base font-medium">
-                  任务名称 <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="task-name"
-                  placeholder="输入任务名称，例如：2024年血液检测报告批量分析"
-                  value={taskName}
-                  onChange={(e) => setTaskName(e.target.value)}
-                  className="cursor-pointer"
-                />
-              </div>
-
-              {/* Report Type */}
-              <div className="space-y-2">
-                <Label className="text-base font-medium">报告类型</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  {reportTemplates.map((template) => (
-                    <Card
-                      key={template.id}
-                      className={cn(
-                        "cursor-pointer transition-all duration-200 border-2 hover:shadow-md",
-                        reportType === template.id
-                          ? "border-[#0891B2] bg-cyan-50/50"
-                          : "border-gray-200"
-                      )}
-                      onClick={() => setReportType(template.id)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-sm text-gray-900">{template.name}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
-                          </div>
-                          {reportType === template.id && (
-                            <div className="w-5 h-5 rounded-full bg-[#0891B2] flex items-center justify-center">
-                              <X className="h-3 w-3 text-white" />
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+              {selectedReports.size === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <FileText className="h-16 w-16 text-gray-300 mb-4" />
+                  <p className="text-base text-gray-500 mb-2">请先在左侧勾选报告</p>
+                  <p className="text-sm text-gray-400">选择报告后可为此配置任务参数</p>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {reports.filter(r => selectedReports.has(r.id)).map((report) => {
+                    const config = taskConfigs[report.id];
+                    if (!config) return null;
+                    
+                    return (
+                      <Card key={report.id} className="border border-gray-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base font-medium">{report.name}</CardTitle>
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">
+                              {report.documents.length} 文档
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                              任务名称 <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              placeholder="输入任务名称"
+                              value={config.taskName}
+                              onChange={(e) => setTaskConfigs({
+                                ...taskConfigs,
+                                [report.id]: { ...config, taskName: e.target.value }
+                              })}
+                              className="cursor-pointer"
+                            />
+                          </div>
 
-              {/* Additional Instructions */}
-              <div className="space-y-2">
-                <Label htmlFor="instructions" className="text-base font-medium">
-                  额外 LLM 指令
-                </Label>
-                <Textarea
-                  id="instructions"
-                  placeholder="输入额外的处理指令，例如：重点关注异常指标、生成对比分析等（可选）"
-                  value={additionalInstructions}
-                  onChange={(e) => setAdditionalInstructions(e.target.value)}
-                  rows={4}
-                  className="resize-none cursor-pointer"
-                />
-              </div>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">LLM 指令</Label>
+                            <Textarea
+                              placeholder="输入额外的处理指令（可选）"
+                              value={config.additionalInstructions}
+                              onChange={(e) => setTaskConfigs({
+                                ...taskConfigs,
+                                [report.id]: { ...config, additionalInstructions: e.target.value }
+                              })}
+                              rows={3}
+                              className="resize-none cursor-pointer"
+                            />
+                          </div>
 
-              {/* Import from Project */}
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  onClick={handleImportFromProject}
-                  className="flex-1 cursor-pointer"
-                >
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  从已有项目导入物料
-                </Button>
-              </div>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value={`advanced-${report.id}`} className="border-gray-200">
+                              <AccordionTrigger className="text-sm hover:text-primary">
+                                高级参数配置
+                              </AccordionTrigger>
+                              <AccordionContent className="space-y-3 pt-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">模型选择</Label>
+                                    <Input
+                                      value={config.advancedParams.model}
+                                      onChange={(e) => setTaskConfigs({
+                                        ...taskConfigs,
+                                        [report.id]: {
+                                          ...config,
+                                          advancedParams: { ...config.advancedParams, model: e.target.value }
+                                        }
+                                      })}
+                                      className="cursor-pointer text-sm"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">温度 (0-1)</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.1"
+                                      min="0"
+                                      max="1"
+                                      value={config.advancedParams.temperature}
+                                      onChange={(e) => setTaskConfigs({
+                                        ...taskConfigs,
+                                        [report.id]: {
+                                          ...config,
+                                          advancedParams: { ...config.advancedParams, temperature: parseFloat(e.target.value) }
+                                        }
+                                      })}
+                                      className="cursor-pointer text-sm"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">最大 Token 数</Label>
+                                  <Input
+                                    type="number"
+                                    value={config.advancedParams.maxTokens}
+                                    onChange={(e) => setTaskConfigs({
+                                      ...taskConfigs,
+                                      [report.id]: {
+                                        ...config,
+                                        advancedParams: { ...config.advancedParams, maxTokens: parseInt(e.target.value) }
+                                      }
+                                    })}
+                                    className="cursor-pointer text-sm"
+                                  />
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
 
-              {/* Advanced Parameters */}
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="advanced" className="border-gray-200">
-                  <AccordionTrigger className="hover:text-primary">
-                    高级参数配置
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-4 pt-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="model">模型选择</Label>
-                        <Input
-                          id="model"
-                          value={advancedParams.model}
-                          onChange={(e) => setAdvancedParams({...advancedParams, model: e.target.value})}
-                          className="cursor-pointer"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="temperature">温度 (0-1)</Label>
-                        <Input
-                          id="temperature"
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="1"
-                          value={advancedParams.temperature}
-                          onChange={(e) => setAdvancedParams({...advancedParams, temperature: parseFloat(e.target.value)})}
-                          className="cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="maxTokens">最大 Token 数</Label>
-                      <Input
-                        id="maxTokens"
-                        type="number"
-                        value={advancedParams.maxTokens}
-                        onChange={(e) => setAdvancedParams({...advancedParams, maxTokens: parseInt(e.target.value)})}
-                        className="cursor-pointer"
-                      />
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-
-              {/* Start Button */}
-              <div className="pt-4">
-                <Button
-                  onClick={handleStartBatch}
-                  disabled={!taskName.trim() || selectedMaterials.size === 0}
-                  className="w-full h-14 text-lg font-semibold bg-[#0891B2] hover:bg-[#07849F] text-white cursor-pointer disabled:opacity-50"
-                >
-                  <Rocket className="h-5 w-5 mr-2" />
-                  启动批量生成
-                </Button>
-                <p className="text-center text-xs text-gray-500 mt-2">
-                  点击后将创建任务并自动开始处理
-                </p>
-              </div>
+                  <div className="pt-4">
+                    <Button
+                      onClick={handleStartBatch}
+                      disabled={selectedReports.size === 0}
+                      className="w-full h-14 text-lg font-semibold bg-[#0891B2] hover:bg-[#07849F] text-white cursor-pointer disabled:opacity-50"
+                    >
+                      <Rocket className="h-5 w-5 mr-2" />
+                      启动批量生成
+                    </Button>
+                    <p className="text-center text-xs text-gray-500 mt-2">
+                      点击后将创建 {selectedReports.size} 个任务并自动开始处理
+                    </p>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

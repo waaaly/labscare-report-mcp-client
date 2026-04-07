@@ -188,7 +188,8 @@ export async function appendDocumentProcessingTask(
   fileName: string,
   fileType: string,
   tempFilePath: string,
-  reportId?: string
+  reportId?: string,
+  size?: number
 ): Promise<string> {
   try {
     if (!documentQueue) {
@@ -201,7 +202,9 @@ export async function appendDocumentProcessingTask(
       fileType,
       tempFilePath,
       reportId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      size: size || 0
+    
     }, {
       jobId: documentId, // 显式指定 ID
     });

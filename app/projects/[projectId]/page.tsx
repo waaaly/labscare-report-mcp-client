@@ -49,6 +49,7 @@ export default function ProjectWorkspacePage() {
       loadProject(projectId, currentLab.id);
       loadReports(projectId, currentLab.id);
     }
+    console.log(process.env.NEXT_PUBLIC_MINIO_PUBLIC_HOST);
     return () => {
       setCurrentProject(null);
     };
@@ -151,7 +152,12 @@ export default function ProjectWorkspacePage() {
         const prefixedFile = new File([file], prefixedFileName, { type: file.type });
         formData.append('files', prefixedFile);
       });
-
+      let formDataObj:any={};
+      for (let [key, value] of formData.entries()) {
+        formDataObj[key] = value;
+      }
+      console.log(formDataObj);
+      
       const response = await fetch(`/api/labs/${currentProject.labId}/projects/${projectId}/documents`, {
         method: 'POST',
         body: formData,
@@ -391,7 +397,21 @@ export default function ProjectWorkspacePage() {
                               return (
                                 <div key={doc.id} className="w-full aspect-square rounded-lg overflow-hidden border bg-background">
                                   <img
-                                    src={process.env.MINIO_PUBLIC_HOST + doc.url || ''}
+                                    src={(() => {
+                                      if (!doc.url) return '';
+                                      const baseUrl = process.env.NEXT_PUBLIC_MINIO_PUBLIC_HOST || '';
+                                      // 确保路径拼接时没有多余的斜杠
+                                      const hasTrailingSlash = baseUrl.endsWith('/');
+                                      const hasLeadingSlash = doc.url.startsWith('/');
+                                      
+                                      if (baseUrl && hasTrailingSlash && hasLeadingSlash) {
+                                        return baseUrl + doc.url.substring(1);
+                                      } else if (baseUrl && !hasTrailingSlash && !hasLeadingSlash) {
+                                        return baseUrl + '/' + doc.url;
+                                      } else {
+                                        return baseUrl + doc.url;
+                                      }
+                                    })()}
                                     alt={doc.name}
                                     className="w-full h-full object-cover"
                                   />

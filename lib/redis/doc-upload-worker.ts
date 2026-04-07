@@ -17,6 +17,7 @@ interface DocumentJobData {
   type: string; // MIME type
   tempFilePath: string;
   reportId?: string;
+  size?: number;
 }
 
 // 全局单例（防止多实例启动）
@@ -61,6 +62,13 @@ async function handleError(
   stage: string
 ): Promise<void> {
   const msg = `${stage}: ${error}`;
+   if (error instanceof AggregateError) {
+    error.errors.forEach((singleError, index) => {
+      console.error(`Error ${index}:`, singleError.message);
+    });
+  } else {
+    console.error(error);
+  }
   logger.error(`[Processing Task]: ${documentId} ${msg}`);
   try {
     await updateDocumentProgress(documentId, fileName, 100, msg, 'failed');
@@ -75,7 +83,7 @@ async function handleError(
 
 // ==================== 核心处理器 ====================
 async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promise<void> {
-  const { documentId, fileName, projectId, fileType, tempFilePath, reportId } = job.data;
+  const { documentId, fileName, projectId, fileType, tempFilePath, reportId, size } = job.data;
   const jobId = job.id;
   const startTime = Date.now();
 
@@ -119,6 +127,7 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
         name: fileName,
         type: fileType,
         url: '',
+        size: size || 0,
         status: 'PROCESSING',
       },
     });

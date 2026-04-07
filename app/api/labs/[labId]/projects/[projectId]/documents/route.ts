@@ -47,7 +47,7 @@ async function validateFile(file: File): Promise<void> {
   // 检查文件类型是否在允许列表中
   // 对于 .md 和 .markdown 文件，即使 MIME 类型是 text/plain 也允许
   const isMdFile = file.name.toLowerCase().endsWith('.md') || file.name.toLowerCase().endsWith('.markdown');
-  
+
   if (!allowedTypes.includes(file.type) && !isMdFile) {
     const error = new Error('Invalid file type. Only PDF, DOC, DOCX, images, JSON, and MD files are allowed.') as ValidationError;
     error.name = 'ValidationError';
@@ -72,15 +72,15 @@ export async function POST(
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
     const reportId = formData.get('reportId') as string;
-    
+
     if (files.length === 0) {
       const error = new Error('No files provided') as ValidationError;
       error.name = 'ValidationError';
       throw error;
     }
-    
+
     const results = [];
-    
+
     for (const file of files) {
       // 验证文件
       await validateFile(file);
@@ -95,7 +95,8 @@ export async function POST(
         file.name,
         file.type,
         tempFilePath,
-        reportId
+        reportId,
+        file.size
       );
       logger.info({ taskId, documentId, projectId, reportId, fileName: file.name, fileType: file.type, tempFilePath }, 'Sent document processing task');
       results.push({
@@ -109,9 +110,9 @@ export async function POST(
         message: 'Document upload started. Processing in background.'
       });
     }
-    
+
     return NextResponse.json(results, { status: 202 });
- 
+
   } catch (error: any) {
     // 细粒度错误处理
     if (error.name === 'ValidationError') {

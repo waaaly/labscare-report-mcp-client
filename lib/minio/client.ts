@@ -9,9 +9,9 @@ export function getMinioConfig(): ClientOptions {
     pathStyle: true
   };
   if (!process.env.MINIO_ENDPOINT) {
-    return { ...config, port: 9000 };
-  } else {
     return config;
+  } else {
+    return { ...config, port: 9000 };
   }
 }
 
