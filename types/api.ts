@@ -1,6 +1,7 @@
 export interface CreateLabRequest {
   name: string;
-  domain?: string;
+  domain: string;
+  token: string;
   fieldMappings?: Record<string, unknown>;
   extractionRules?: Record<string, unknown>;
   sampleFilters?: Record<string, unknown>;
@@ -12,7 +13,7 @@ export interface UpdateLabRequest {
   name?: string;
   domain?: string;
   version?: string;
-  account?: string;
+  // account?: string;
   token?: string;
 }
 

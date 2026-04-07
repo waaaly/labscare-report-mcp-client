@@ -22,6 +22,7 @@ export default function LabSwitcher() {
   const [labName, setLabName] = useState('');
   const [labDomain, setLabDomain] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [labToken, setLabToken] = useState('');
 
   useEffect(() => {
     fetchLabs();
@@ -60,7 +61,8 @@ export default function LabSwitcher() {
         },
         body: JSON.stringify({
           name: labName,
-          domain: labDomain || undefined,
+          domain: labDomain || '',
+          token: labToken || '',
         }),
       });
 
@@ -146,11 +148,19 @@ export default function LabSwitcher() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Domain (Optional)</label>
+              <label className="text-sm font-medium">Domain</label>
               <Input 
                 placeholder="e.g., clinical, research, testing" 
                 value={labDomain}
                 onChange={(e) => setLabDomain(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Token</label>
+              <Input 
+                placeholder="Enter MCP token..." 
+                value={labToken}
+                onChange={(e) => setLabToken(e.target.value)}
               />
             </div>
             <Button 

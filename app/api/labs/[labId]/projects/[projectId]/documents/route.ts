@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { writeTempFile } from '@/lib/storage';
-import { sendDocumentProcessingTask } from '@/lib/redis/client';
+import { appendDocumentProcessingTask } from '@/lib/redis/client';
+import { logger } from '@/lib/logger';
 
 
 // 类型定义
@@ -85,14 +86,14 @@ export async function POST(
       const tempFilePath = await writeTempFile(file);
 
       // 发送消息到队列
-      const taskId = await sendDocumentProcessingTask(
+      const taskId = await appendDocumentProcessingTask(
         documentId,
         projectId,
         file.name,
         file.type,
         tempFilePath
       );
-      
+      logger.info({ taskId, documentId, projectId, fileName: file.name, fileType: file.type, tempFilePath }, 'Sent document processing task');
       results.push({
         taskId,
         id: documentId,

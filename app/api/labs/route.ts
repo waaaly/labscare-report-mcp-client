@@ -24,12 +24,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body: CreateLabRequest = await request.json();
-    const { name, domain = '', fieldMappings, extractionRules, sampleFilters, promptTemplates } = body;
+    const { name, domain = '', token = '', fieldMappings, extractionRules, sampleFilters, promptTemplates } = body;
 
     const lab = await prisma.lab.create({
       data: {
         name,
-        domain,
+        domain, 
+        token,
         version: '1.0.0', // 默认版本
         fieldMappings: fieldMappings as Prisma.InputJsonValue,
         extractionRules: extractionRules as Prisma.InputJsonValue,
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body: UpdateLabRequest = await request.json();
-    const { id, name, domain, version, account, token } = body;
+    const { id, name, domain, version,  token } = body;
 
     const lab = await prisma.lab.update({
       where: { id },
@@ -59,7 +60,6 @@ export async function PUT(request: Request) {
         ...(name && { name }),
         ...(domain !== undefined && { domain }),
         ...(version && { version }),
-        ...(account !== undefined && { account }),
         ...(token !== undefined && { token }),
       },
     });

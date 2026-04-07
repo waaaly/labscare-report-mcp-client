@@ -10,101 +10,100 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, X, Badge, Database } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
-import DocumentViewer, { DocumentViewerHandle } from '@/components/workspace/document-viewer';
-import AnnotationMapping from '@/components/workspace/annotation-mapping';
-import SchemaBuilder from '@/components/workspace/schema-builder';
-import LimsDataPanel from '@/components/workspace/lims-data-panel';
-import ScriptGenerator from '@/components/workspace/script-generator';
-import ExecutionDebug from '@/components/workspace/execution-debug';
-import Pipeline from '@/components/workspace/pipeline';
-import { PipelineStep, Document, PipelineStepStatus, PipelineStatus } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export default function ProjectWorkspacePage() {
   const params = useParams();
   const projectId = params.projectId as string;
-  const { currentProject, loadProject, setCurrentProject, documents, setDocuments, updateDocumentPipelineStatus, getDocumentPipelineStatus } = useProjectStore();
+  const { currentProject, loadProject, setCurrentProject,
+    reports, loadReports, addReport } = useProjectStore();
   const { currentLab } = useLabStore();
-  
-  const [currentStep, setCurrentStep] = useState<PipelineStep>('document');
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+
+
   const [isAddReportDialogOpen, setIsAddReportDialogOpen] = useState(false);
   const [newReportName, setNewReportName] = useState('');
-  const [reports, setReports] = useState<Array<{id: string, name: string, materials: Array<{id: string, name: string, type: string, content: string}>}>>([]);
+  const [newReportDescription, setNewReportDescription] = useState('');
   const [isFileUploadDrawerOpen, setIsFileUploadDrawerOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [isProgressDialogOpen, setIsProgressDialogOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadMessage, setUploadMessage] = useState('');
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
-  const documentViewerRef = useRef<DocumentViewerHandle>(null);
 
   useEffect(() => {
     if (projectId && currentLab?.id) {
       loadProject(projectId, currentLab.id);
+      loadReports(projectId, currentLab.id);
     }
     return () => {
       setCurrentProject(null);
     };
-  }, [projectId, currentLab?.id, loadProject, setCurrentProject]);
+  }, [projectId, currentLab?.id, loadProject, setCurrentProject, loadReports]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const maxSize = 10 * 1024 * 1024;
-      if (file.size > maxSize) {
-        setUploadError('File size must be less than 10MB');
-        setSelectedFile(null);
-        return;
-      }
-
-      setUploadError('');
-      setSelectedFile(file);
-    }
-  };
+  const [documentProgress, setDocumentProgress] = useState<Record<string, { progress: number; message: string; status: string }>>({});
+  const [completedDocuments, setCompletedDocuments] = useState<number>(0);
+  const totalDocumentsRef = useRef<number>(0);
 
   const connectToSSE = (documentId: string) => {
     const eventSource = new EventSource(`/api/sse/doc-upload-progress/${documentId}`);
-    
+
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        setUploadProgress(data.progress || 0);
-        setUploadMessage(data.message || '');
-        
+        setDocumentProgress(prev => ({
+          ...prev,
+          [documentId]: {
+            progress: data.progress || 0,
+            message: data.message || '',
+            status: data.status || 'processing'
+          }
+        }));
+
         if (data.status === 'completed' || data.status === 'failed') {
           eventSource.close();
-          setTimeout(() => {
-            setIsProgressDialogOpen(false);
-            if (data.status === 'completed') {
-              toast.success('File uploaded successfully');
-            } else {
-              toast.error('File upload failed');
-            }
-          }, 1000);
+          setCompletedDocuments(prev => prev + 1);
+
+          // 检查是否所有文档都已完成
+          if (completedDocuments + 1 === totalDocumentsRef.current) {
+            setTimeout(() => {
+              setIsProgressDialogOpen(false);
+              setDocumentProgress({});
+              setCompletedDocuments(0);
+              totalDocumentsRef.current = 0;
+
+              // 显示成功/失败消息
+              const allCompleted = Object.values(documentProgress).every(doc => doc.status === 'completed');
+              if (allCompleted) {
+                toast.success(`${totalDocumentsRef.current} files uploaded successfully`);
+              } else {
+                toast.error('Some files failed to upload');
+              }
+            }, 1000);
+          }
         }
       } catch (error) {
         console.error('Error parsing SSE message:', error);
       }
     };
-    
+
     eventSource.onerror = (error) => {
       console.error('SSE error:', error);
       eventSource.close();
     };
-    
+
     return eventSource;
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) {
-      setUploadError('Please select a file');
+    if (selectedFiles.length === 0) {
+      setUploadError('Please select at least one file');
       return;
     }
 
@@ -117,8 +116,19 @@ export default function ProjectWorkspacePage() {
     setUploadError('');
 
     try {
+      // 准备表单数据，包含所有选中的文件
       const formData = new FormData();
-      formData.append('files', selectedFile);
+      
+      // 获取当前选中的报告
+      const selectedReport = reports.find(report => report.id === selectedReportId);
+      const reportName = selectedReport?.name || '';
+      
+      selectedFiles.forEach(file => {
+        // 创建新的File对象，添加报告名称作为前缀
+        const prefixedFileName = reportName ? `${reportName}-${file.name}` : file.name;
+        const prefixedFile = new File([file], prefixedFileName, { type: file.type });
+        formData.append('files', prefixedFile);
+      });
 
       const response = await fetch(`/api/labs/${currentProject.labId}/projects/${projectId}/documents`, {
         method: 'POST',
@@ -128,47 +138,36 @@ export default function ProjectWorkspacePage() {
       if (response.ok) {
         const data = await response.json();
         if (data && data.length > 0) {
-          const document = data[0];
-          setCurrentDocumentId(document.id);
+          // 记录总文件数
+          totalDocumentsRef.current = data.length;
+          setCompletedDocuments(0);
+
+          // 初始化进度状态
+          const initialProgress: Record<string, { progress: number; message: string; status: string }> = {};
+          data.forEach((doc: any) => {
+            initialProgress[doc.id] = {
+              progress: 0,
+              message: 'Starting upload...',
+              status: 'processing'
+            };
+          });
+          setDocumentProgress(initialProgress);
+
+          // 打开进度对话框
           setIsProgressDialogOpen(true);
-          setUploadProgress(0);
-          setUploadMessage('Starting upload...');
-          
-          // 连接SSE获取进度
-          connectToSSE(document.id);
-          
+
+          // 为每个文档连接SSE获取进度
+          data.forEach((doc: any) => {
+            connectToSSE(doc.id);
+          });
+
           // 关闭抽屉
           setIsFileUploadDrawerOpen(false);
-          setSelectedFile(null);
-          
-          // 更新报告物料
-          if (selectedReportId) {
-            const fileType = selectedFile.name.split('.').pop() || '';
-            let materialType = 'other';
-            if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileType.toLowerCase())) {
-              materialType = 'image';
-            } else if (fileType.toLowerCase() === 'json') {
-              materialType = 'json';
-            } else if (fileType.toLowerCase() === 'md') {
-              materialType = 'md';
-            }
+          setSelectedFiles([]);
 
-            const newMaterial = {
-              id: document.id,
-              name: selectedFile.name,
-              type: materialType,
-              content: materialType === 'image' ? document.url : 'Processing...'
-            };
-
-            setReports(reports.map(report => {
-              if (report.id === selectedReportId) {
-                return {
-                  ...report,
-                  materials: [...report.materials, newMaterial]
-                };
-              }
-              return report;
-            }));
+          // 重新获取报告列表以更新文档信息
+          if (selectedReportId && currentLab?.id) {
+            setTimeout(() => loadReports(projectId, currentLab.id), 1000);
           }
         }
       } else {
@@ -189,83 +188,6 @@ export default function ProjectWorkspacePage() {
     return <FileIcon className="h-5 w-5 text-gray-400" />;
   };
 
-  const getPipelineProgress = (status: PipelineStatus) => {
-    const steps = Object.values(status);
-    return steps.map((s) => {
-      if (s === 'completed') return 'bg-emerald-500';
-      if (s === 'in_progress') return 'bg-cyan-500';
-      return 'bg-gray-200';
-    });
-  };
-
-  const handleDocumentClick = (docId: string) => {
-    setSelectedDocumentId(docId === selectedDocumentId ? null : docId);
-    setCurrentStep('document');
-  };
-
-
-  const handleStepClick = (step: PipelineStep) => {
-    if (selectedDocumentId) {
-      updateDocumentPipelineStatus(selectedDocumentId, currentStep, 'completed');
-      updateDocumentPipelineStatus(selectedDocumentId, step, 'in_progress');
-    }
-    setCurrentStep(step);
-    switch(step){
-      case 'document':
-        return handleProcessDocument();
-      case 'mapping':
-
-    }
-  };
-
-  const handleProcessDocument = async () => {
-    if (documentViewerRef.current) {
-      await documentViewerRef.current.processDocument();
-    }
-  };
-
-  const handleDeleteDocument = async (docId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!currentProject?.labId) return;
-
-    try {
-      const response = await fetch(`/api/labs/${currentProject.labId}/projects/${projectId}/documents/${docId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setDocuments(documents.filter(d => d.id !== docId));
-        if (selectedDocumentId === docId) {
-          setSelectedDocumentId(null);
-        }
-        toast.success('Document deleted successfully');
-      } else {
-        toast.error('Failed to delete document');
-      }
-    } catch (error) {
-      toast.error('An error occurred while deleting the document');
-    }
-  };
-
-  const renderContent = () => {
-    switch (currentStep) {
-      case 'document':
-        return <DocumentViewer ref={documentViewerRef} projectId={projectId} selectedDocumentId={selectedDocumentId} />;
-      case 'mapping':
-        return <AnnotationMapping projectId={projectId} />;
-      case 'lims':
-        return <LimsDataPanel projectId={projectId} />;
-      case 'schema':
-        return <SchemaBuilder projectId={projectId} />;
-      case 'script':
-        return <ScriptGenerator projectId={projectId} />;
-      case 'debug':
-        return <ExecutionDebug projectId={projectId} />;
-      default:
-        return null;
-    }
-  };
-
   if (!currentProject) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -274,8 +196,6 @@ export default function ProjectWorkspacePage() {
     );
   }
 
-  const selectedDocument = documents.find(d => d.id === selectedDocumentId);
-  const currentPipelineStatus = selectedDocument ? getDocumentPipelineStatus(selectedDocument.id) : undefined;
 
   return (
     <div className="flex flex-col h-screen bg-[#f3e8ff]">
@@ -316,31 +236,61 @@ export default function ProjectWorkspacePage() {
                   className="cursor-pointer"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="report-description">Description (Optional)</Label>
+                <textarea
+                  id="report-description"
+                  value={newReportDescription}
+                  onChange={(e) => setNewReportDescription(e.target.value)}
+                  placeholder="Enter report description"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  rows={3}
+                />
+              </div>
 
               <div className="flex gap-3">
                 <Button
-                  onClick={() => {
-                    if (newReportName.trim()) {
-                      const newReport = {
-                        id: Date.now().toString(),
-                        name: newReportName.trim(),
-                        materials: []
-                      };
-                      setReports([...reports, newReport]);
-                      setIsAddReportDialogOpen(false);
-                      setNewReportName('');
+                  onClick={async () => {
+                    if (newReportName.trim() && currentLab?.id) {
+                      try {
+                        const response = await fetch(`/api/labs/${currentLab.id}/projects/${projectId}/reports`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            name: newReportName.trim(),
+                            description: newReportDescription.trim(),
+                          }),
+                        });
+                        if (response.ok) {
+                          const newReport = await response.json();
+                          addReport(newReport);
+                          setIsAddReportDialogOpen(false);
+                          setNewReportName('');
+                          setNewReportDescription('');
+                          toast.success('Report added successfully');
+                        } else {
+                          const error = await response.json();
+                          toast.error(error.error || 'Failed to add report');
+                        }
+                      } catch (error) {
+                        console.error('Failed to add report:', error);
+                        toast.error('An error occurred while adding the report');
+                      }
                     }
                   }}
                   disabled={!newReportName.trim()}
                   className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
                 >
-                  Add
+                  Add Report
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => {
                     setIsAddReportDialogOpen(false);
                     setNewReportName('');
+                    setNewReportDescription('');
                   }}
                   className="flex-1 cursor-pointer"
                 >
@@ -360,96 +310,132 @@ export default function ProjectWorkspacePage() {
             <p className="text-xs text-gray-400">Add your first report to start</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <Accordion type="single" collapsible className="space-y-4">
             {reports.map((report) => (
-              <div key={report.id} className="border rounded-lg bg-white">
-                <div 
-                  className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => setSelectedReportId(selectedReportId === report.id ? null : report.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-cyan-600" />
-                    <span className="text-sm font-medium">{report.name}</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedReportId(report.id);
-                      setIsFileUploadDrawerOpen(true);
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <Upload className="mr-1 h-3 w-3" />
-                    Upload
-                  </Button>
-                </div>
-                {selectedReportId === report.id && (
-                  <div className="px-4 pb-4">
-                    <div className="space-y-3">
-                      {report.materials.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-gray-500">
-                          No materials uploaded yet
-                        </div>
-                      ) : (
-                        report.materials.map((material) => {
-                          if (material.type === "image") {
-                            return (
-                              <div key={material.id} className="mt-2 rounded-lg overflow-hidden border bg-background">
-                                <img
-                                  src={material.content}
-                                  alt={material.name}
-                                  className="max-w-full h-auto max-h-64 object-contain"
-                                />
-                                <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50">
-                                  {material.name}
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          if (material.type === "json") {
-                            return (
-                              <div key={material.id} className="mt-2 border rounded-lg bg-background">
-                                <div className="px-3 pb-2">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <Database className="w-4 h-4 text-blue-500" />
-                                    <span className="text-sm font-medium">{material.name}</span>
-                                  </div>
-                                  <pre className="text-xs font-mono bg-muted/30 p-2 rounded overflow-auto max-h-64 overflow-y-auto">
-                                    {material.content}
-                                  </pre>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          if (material.type === "md") {
-                            return (
-                              <div key={material.id} className="mt-2 border rounded-lg bg-background">
-                                <div className="px-3 pb-2">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <FileIcon className="w-4 h-4 text-purple-500" />
-                                    <span className="text-sm font-medium">{material.name}</span>
-                                  </div>
-                                  <div className="text-xs bg-muted/30 p-2 rounded overflow-auto max-h-64 overflow-y-auto">
-                                    <ReactMarkdown>{material.content}</ReactMarkdown>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          return null;
-                        })
+              <AccordionItem key={report.id} value={report.id} className="border rounded-lg bg-white px-0">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50">
+                  <div className="flex items-center justify-between w-full pr-4">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-cyan-600" />
+                      <div className="text-left">
+                        <span className="text-sm font-medium">{report.name}</span>
+                        {report.description && (
+                          <p className="text-xs text-gray-500 mt-1">{report.description}</p>
+                        )}
+                        {report?.task ? (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Task: {report.task.name} - {report.task.status}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-500 mt-1">暂无相关任务</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {report?.task?.status && (
+                        <Badge className="text-xs">{report?.task?.status}</Badge>
                       )}
+                      <span
+                        role="button"
+                        className="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-3 bg-ghost hover:bg-muted cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedReportId(report.id);
+                          setIsFileUploadDrawerOpen(true);
+                        }}
+                      >
+                        <Upload className="mr-1 h-3 w-3" />
+                        Upload
+                      </span>
                     </div>
                   </div>
-                )}
-              </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4 h-full overflow-y-auto">
+                  <div className="space-y-4">
+                    {report.documents && report.documents.length > 0 ? (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Documents</h4>
+                        <div className="grid grid-cols-3 gap-3">
+                          {report.documents.map((doc) => {
+                            const fileExtension = doc.name.split('.').pop()?.toLowerCase();
+                            let fileType = 'other';
+                            if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')) {
+                              fileType = 'image';
+                            } else if (fileExtension === 'json') {
+                              fileType = 'json';
+                            } else if (fileExtension === 'md') {
+                              fileType = 'md';
+                            }
+
+                            if (fileType === 'image') {
+                              return (
+                                <div key={doc.id} className="w-full aspect-square rounded-lg overflow-hidden border bg-background">
+                                  <img
+                                    src={doc.url || ''}
+                                    alt={doc.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              );
+                            }
+
+                            if (fileType === 'json') {
+                              return (
+                                <div key={doc.id} className="w-full aspect-square border rounded-lg bg-background overflow-hidden">
+                                  <div className="p-2 h-full flex flex-col">
+                                    <div className="flex items-center gap-1 mb-1">
+                                      <Database className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                                      <span className="text-xs font-medium truncate">{doc.name}</span>
+                                    </div>
+                                    <pre className="text-xs font-mono bg-muted/30 p-1 rounded flex-1 overflow-hidden text-ellipsis">
+                                      {doc.content ? JSON.stringify(doc.content, null, 2) : 'No content'}
+                                    </pre>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (fileType === 'md') {
+                              return (
+                                <div key={doc.id} className="w-full aspect-square border rounded-lg bg-background overflow-hidden">
+                                  <div className="p-2 h-full flex flex-col">
+                                    <div className="flex items-center gap-1 mb-1">
+                                      <FileIcon className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                      <span className="text-xs font-medium truncate">{doc.name}</span>
+                                    </div>
+                                    <div className="text-xs bg-muted/30 p-1 rounded flex-1 overflow-hidden">
+                                      <ReactMarkdown>{doc.content || ''}</ReactMarkdown>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div key={doc.id} className="w-full aspect-square flex flex-col justify-between p-2 border rounded-md">
+                                <div className="flex items-center gap-2">
+                                  {getFileIcon(doc.type || 'other')}
+                                  <span className="text-xs truncate flex-1">{doc.name}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs text-gray-500">{new Date(doc.createdAt).toLocaleDateString()}</p>
+                                  <Badge className="text-xs">{doc.status}</Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-sm text-gray-500 h-[120px] flex items-center justify-center">
+                        No documents uploaded yet
+                      </div>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
+          </Accordion>
         )}
       </div>
 
@@ -464,18 +450,24 @@ export default function ProjectWorkspacePage() {
               <Input
                 id="file-upload"
                 type="file"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.json,.md"
+                multiple
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.json,.md,.markdown"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) {
+                    console.log('Selected files:', files);
                     const maxSize = 10 * 1024 * 1024;
-                    if (file.size > maxSize) {
-                      setUploadError('File size must be less than 10MB');
-                      setSelectedFile(null);
+
+                    // 检查每个文件的大小
+                    const invalidFile = files.find(file => file.size > maxSize);
+                    if (invalidFile) {
+                      setUploadError('All files must be less than 10MB');
+                      setSelectedFiles([]);
                       return;
                     }
+
                     setUploadError('');
-                    setSelectedFile(file);
+                    setSelectedFiles(files);
                   }
                 }}
                 disabled={isUploading}
@@ -486,12 +478,19 @@ export default function ProjectWorkspacePage() {
               </p>
             </div>
 
-            {selectedFile && (
+            {selectedFiles.length > 0 && (
               <div className="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
-                <p className="text-sm font-medium text-cyan-900">{selectedFile.name}</p>
-                <p className="text-xs text-cyan-700">
-                  {(selectedFile.size / 1024).toFixed(2)} KB
-                </p>
+                <p className="text-sm font-medium text-cyan-900 mb-2">Selected files ({selectedFiles.length}):</p>
+                <div className="space-y-1">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between">
+                      <span className="text-sm text-cyan-800 truncate">{file.name}</span>
+                      <span className="text-xs text-cyan-600">
+                        {(file.size / 1024).toFixed(2)} KB
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -504,7 +503,7 @@ export default function ProjectWorkspacePage() {
             <div className="flex gap-3">
               <Button
                 onClick={handleUpload}
-                disabled={isUploading || !selectedFile || !selectedReportId}
+                disabled={isUploading || selectedFiles.length === 0 || !selectedReportId}
                 className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
               >
                 {isUploading ? (
@@ -520,7 +519,7 @@ export default function ProjectWorkspacePage() {
                 variant="outline"
                 onClick={() => {
                   setIsFileUploadDrawerOpen(false);
-                  setSelectedFile(null);
+                  setSelectedFiles([]);
                   setUploadError('');
                 }}
                 disabled={isUploading}
@@ -539,20 +538,27 @@ export default function ProjectWorkspacePage() {
             <DialogTitle>Upload Progress</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Uploading...</span>
-                <span>{uploadProgress}%</span>
+            {Object.entries(documentProgress).map(([docId, progress]) => (
+              <div key={docId} className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Processing...</span>
+                  <span>{progress.progress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-300 ${progress.status === 'completed' ? 'bg-green-600' :
+                        progress.status === 'failed' ? 'bg-red-600' : 'bg-cyan-600'
+                      }`}
+                    style={{ width: `${progress.progress}%` }}
+                  ></div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {progress.message}
+                </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5">
-                <div 
-                  className="bg-cyan-600 h-2.5 rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
-              </div>
-            </div>
+            ))}
             <div className="text-sm text-muted-foreground">
-              {uploadMessage}
+              {completedDocuments}/{totalDocumentsRef.current} files processed
             </div>
           </div>
         </DialogContent>

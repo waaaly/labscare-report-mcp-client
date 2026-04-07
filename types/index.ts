@@ -2,7 +2,7 @@ export interface Lab {
   id: string;
   name: string;
   domain: string;
-  account:string;
+  // account:string;
   token:string;
   version: string;
   fieldMappings: FieldMapping[];

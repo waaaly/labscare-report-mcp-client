@@ -30,6 +30,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
+    lng: 'en', // 强制设置初始语言为英文
     fallbackLng: i18nConfig.defaultLocale,
     supportedLngs: i18nConfig.locales,
     defaultNS: 'common',

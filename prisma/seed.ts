@@ -32,6 +32,7 @@ async function main() {
         data: {
           name: 'Demo Lab',
           domain: 'clinical',
+          token: 'demo-token-12345',
           version: '1.0.0',
           fieldMappings: {
             'patientId': { cell: 'A2', type: 'string' },
@@ -99,7 +100,6 @@ async function main() {
         projectId: project.id,
         name: 'Patient Blood Test Report',
         description: 'Comprehensive blood test results for patient',
-        status: 'COMPLETED',
       },
     }),
     await prisma.report.create({
@@ -107,7 +107,6 @@ async function main() {
         projectId: project.id,
         name: 'Annual Health Check Report',
         description: 'Annual health check blood test results',
-        status: 'PENDING',
       },
     }),
   ]);
@@ -294,17 +293,6 @@ return extractData(document);`,
       reportType: 'comprehensive',
       status: 'running',
       progress: 67,
-    },
-    {
-      id: 'task-003',
-      userId: user.id,
-      labId: lab.id,
-      name: '历史数据整理脚本生成',
-      reportId: reports[0].id,
-      reportType: 'custom',
-      status: 'failed',
-      progress: 35,
-      error: 'LLM API 超时',
     },
   ];
 

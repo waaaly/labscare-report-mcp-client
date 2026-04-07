@@ -13,8 +13,7 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "worker": "tsx --env-file=.env workers/batch-worker.ts",
-    "worker:dev": "tsx --env-file=.env watch workers/batch-worker.ts"
+    "worker:dev": "tsx --env-file=.env --watch scripts/worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -101,5 +100,8 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "openai": "^6.32.0"
   }
 }

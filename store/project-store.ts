@@ -1,5 +1,18 @@
 import { create } from 'zustand';
 import { Project, Document, Schema, Script, PipelineStatus, PipelineStep, PipelineStepStatus } from '@/types';
+import { Task, Report } from '@prisma/client';
+
+type ReportDocument = Report & {
+  documents: Array<Document & {
+    url: string;
+    content: string;
+  }>
+  task: Task & {
+    name: string;
+    status: string;
+    createdAt: string;
+  }
+}
 
 interface ProjectState {
   currentProject: Project | null;
@@ -7,6 +20,7 @@ interface ProjectState {
   documents: Document[];
   schemas: Schema[];
   scripts: Script[];
+  reports: ReportDocument[];
   isLoading: boolean;
   error: string | null;
   
@@ -15,6 +29,7 @@ interface ProjectState {
   setDocuments: (documents: Document[]) => void;
   setSchemas: (schemas: Schema[]) => void;
   setScripts: (scripts: Script[]) => void;
+  setReports: (reports: ReportDocument[]) => void;
   addProject: (project: Project) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
@@ -27,10 +42,14 @@ interface ProjectState {
   addScript: (script: Script) => void;
   updateScript: (id: string, updates: Partial<Script>) => void;
   deleteScript: (id: string) => void;
+  addReport: (report: ReportDocument) => void;
+  updateReport: (id: string, updates: Partial<ReportDocument>) => void;
+  deleteReport: (id: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   loadProjects: (labId: string) => Promise<void>;
   loadProject: (projectId: string, labId: string) => Promise<void>;
+  loadReports: (projectId: string, labId: string) => Promise<void>;
   updateDocumentPipelineStatus: (documentId: string, step: PipelineStep, status: PipelineStepStatus) => void;
   setDocumentPipelineStatus: (documentId: string, status: PipelineStatus) => void;
   getDocumentPipelineStatus: (documentId: string) => PipelineStatus | undefined;
@@ -42,6 +61,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   documents: [],
   schemas: [],
   scripts: [],
+  reports: [],
   isLoading: false,
   error: null,
 
@@ -54,6 +74,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setSchemas: (schemas) => set({ schemas }),
 
   setScripts: (scripts) => set({ scripts }),
+
+  setReports: (reports) => set({ reports }),
 
   addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
 
@@ -107,6 +129,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       scripts: state.scripts.filter((s) => s.id !== id),
     })),
 
+  addReport: (report) => set((state) => ({ reports: [...state.reports, report] })),
+
+  updateReport: (id, updates) =>
+    set((state) => ({
+      reports: state.reports.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+    })),
+
+  deleteReport: (id) =>
+    set((state) => ({
+      reports: state.reports.filter((r) => r.id !== id),
+    })),
+
   setLoading: (loading) => set({ isLoading: loading }),
 
   setError: (error) => set({ error }),
@@ -141,6 +175,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ currentProject: project, documents: project.documents || [], schemas: project.schemas || [], scripts: project.scripts || [] });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load project' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  loadReports: async (projectId, labId) => {
+    set({ isLoading: true, error: null });
+    try {
+      if (!labId) {
+        throw new Error('labId is required');
+      }
+      const response = await fetch(`/api/labs/${labId}/projects/${projectId}/reports`);
+      if (!response.ok) throw new Error('Failed to load reports');
+      const reports = await response.json();
+      set({ reports });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to load reports' });
     } finally {
       set({ isLoading: false });
     }

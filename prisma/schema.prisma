@@ -24,6 +24,7 @@ model Lab {
   id               String   @id @default(cuid())
   name             String
   domain           String
+  token            String
   version          String
   fieldMappings    Json?
   extractionRules  Json?
@@ -58,13 +59,12 @@ model Report {
   projectId   String
   name        String
   description String?
-  status      String   @default("PENDING")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   documents   Document[]
-  tasks       Task[]
+  task        Task?
 }
 
 model Document {
@@ -126,7 +126,7 @@ model Task {
   userId                 String         @map("user_id")
   labId                  String         @map("lab_id")
   name                   String
-  reportId               String
+  reportId               String         @unique @map("report_id")
   reportType             String?        @map("report_type")
   additionalInstructions String?        @map("additional_instructions")
   status                 String
@@ -144,7 +144,8 @@ model Task {
   
   user                   User           @relation(fields: [userId], references: [id])
   lab                    Lab            @relation(fields: [labId], references: [id])
-  report                 Report         @relation(fields: [reportId], references: [id])
+  
+  report    Report @relation(fields: [reportId], references: [id])
   reportTemplate         ReportTemplate? @relation(fields: [reportType], references: [id])
   
   @@index([userId])

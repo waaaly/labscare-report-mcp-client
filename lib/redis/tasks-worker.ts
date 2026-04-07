@@ -49,95 +49,27 @@ export interface ReportTaskResult {
 
 // ===== 创建 Worker =====
 
-const worker = new Worker<ReportTaskData, ReportTaskResult>(
-  "report",
-  async (job: Job<ReportTaskData>) => {
-    const { jobId, batchId, prompt, contextJson, messagesJson, files } = job.data;
-    const startTime = Date.now();
-
-    logger.info({ jobId, batchId, prompt: prompt.substring(0, 100), filesCount: files?.length || 0 }, `[Worker] 开始处理任务: ${jobId}`);
-
-    try {
-      // 检查是否启用模拟模式
-      const useMock = process.env.USE_MOCK_LLM === 'true';
-
-      if (useMock) {
-        logger.info({ jobId }, `[Worker] 使用模拟 LLM 模式`);
-
-        // 模拟 LLM 调用过程
-        await simulateLLMCall(jobId, prompt);
-
-        // 标记完成
-        const duration = Date.now() - startTime;
-        await markStreamComplete(jobId, {
-          type: "metrics",
-          total_duration: duration,
-          tokensUsed: 123,
-        });
-
-        logger.info({ jobId, duration }, `[Worker] 模拟任务完成: ${jobId}`);
-
-        return {
-          success: true,
-          duration,
-        };
-      } else {
-        // 1. 创建 Agent 实例
-        const agent = await createAgentInstance();
-
-        // 2. 构建消息
-        const messages = await buildMessages(prompt, contextJson, messagesJson, files);
-
-        // 3. 执行 Agent 并发布流式结果
-        const result = await executeAgentStreaming(jobId, agent, messages);
-
-        // 4. 标记完成
-        const duration = Date.now() - startTime;
-        await markStreamComplete(jobId, {
-          type: "metrics",
-          total_duration: duration,
-          ...result,
-        });
-
-        logger.info({ jobId, duration }, `[Worker] 任务完成: ${jobId}`);
-
-        return {
-          success: true,
-          duration,
-        };
-      }
-
-    } catch (error) {
-      const err = error as Error;
-      logger.error({ jobId, error: err.message, stack: err.stack }, `[Worker] 任务失败: ${jobId}`);
-
-      await markStreamFailed(jobId, err);
-      throw error; // 让 BullMQ 处理重试
-    }
-  },
-  {
-    concurrency: WORKER_CONCURRENCY,
-    connection: redisConfig,
-  }
-);
+let worker: Worker<ReportTaskData, ReportTaskResult> | null = null;
 
 // ===== Worker 事件处理 =====
 
-worker.on('error', (err) => {
-  logger.error({ err }, '[Worker] Worker error');
-});
+function setupWorkerEvents(worker: Worker<ReportTaskData, ReportTaskResult>) {
+  worker.on('error', (err) => {
+    logger.error({ err }, '[Worker] Worker error');
+  });
 
-worker.on('completed', (job) => {
-  logger.info({ jobId: job.id, attempts: job.attemptsMade, processedOn: job.processedOn, finishedOn: job.finishedOn }, `[Worker] Job completed: ${job.id}`);
-});
+  worker.on('completed', (job) => {
+    logger.info({ jobId: job.id, attempts: job.attemptsMade, processedOn: job.processedOn, finishedOn: job.finishedOn }, `[Worker] Job completed: ${job.id}`);
+  });
 
-worker.on('failed', (job, err) => {
-  logger.error({ jobId: job?.id, attempts: job?.attemptsMade, error: err.message }, `[Worker] Job failed: ${job?.id}`);
-});
+  worker.on('failed', (job, err) => {
+    logger.error({ jobId: job?.id, attempts: job?.attemptsMade, error: err.message }, `[Worker] Job failed: ${job?.id}`);
+  });
 
-worker.on('progress', (job, progress) => {
-  logger.debug({ jobId: job.id, progress }, `[Worker] Job progress: ${job.id}`);
-});
+  worker.on('progress', (job, progress) => {
+    logger.debug({ jobId: job.id, progress }, `[Worker] Job progress: ${job.id}`);
+  });
+}
 
 // ===== 辅助函数 =====
 
@@ -283,13 +215,17 @@ async function executeAgentStreaming(
 
 process.on('SIGTERM', async () => {
   logger.info('[Worker] 收到 SIGTERM，正在关闭...');
-  await worker.close();
+  if (worker) {
+    await worker.close();
+  }
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   logger.info('[Worker] 收到 SIGINT，正在关闭...');
-  await worker.close();
+  if (worker) {
+    await worker.close();
+  }
   process.exit(0);
 });
 
@@ -474,6 +410,87 @@ module.exports = reportScript;
  * 启动文档处理器
  */
 export function startTasksProcessor(): void {
+  if (worker) {
+    logger.info('Tasks processor already started');
+    return;
+  }
+  
+  // 创建 BullMQ Worker
+  worker = new Worker<ReportTaskData, ReportTaskResult>(
+    "report",
+    async (job: Job<ReportTaskData>) => {
+      const { jobId, batchId, prompt, contextJson, messagesJson, files } = job.data;
+      const startTime = Date.now();
+
+      logger.info({ jobId, batchId, prompt: prompt.substring(0, 100), filesCount: files?.length || 0 }, `[Worker] 开始处理任务: ${jobId}`);
+
+      try {
+        // 检查是否启用模拟模式
+        const useMock = process.env.USE_MOCK_LLM === 'true';
+
+        if (useMock) {
+          logger.info({ jobId }, `[Worker] 使用模拟 LLM 模式`);
+
+          // 模拟 LLM 调用过程
+          await simulateLLMCall(jobId, prompt);
+
+          // 标记完成
+          const duration = Date.now() - startTime;
+          await markStreamComplete(jobId, {
+            type: "metrics",
+            total_duration: duration,
+            tokensUsed: 123,
+          });
+
+          logger.info({ jobId, duration }, `[Worker] 模拟任务完成: ${jobId}`);
+
+          return {
+            success: true,
+            duration,
+          };
+        } else {
+          // 1. 创建 Agent 实例
+          const agent = await createAgentInstance();
+
+          // 2. 构建消息
+          const messages = await buildMessages(prompt, contextJson, messagesJson, files);
+
+          // 3. 执行 Agent 并发布流式结果
+          const result = await executeAgentStreaming(jobId, agent, messages);
+
+          // 4. 标记完成
+          const duration = Date.now() - startTime;
+          await markStreamComplete(jobId, {
+            type: "metrics",
+            total_duration: duration,
+            ...result,
+          });
+
+          logger.info({ jobId, duration }, `[Worker] 任务完成: ${jobId}`);
+
+          return {
+            success: true,
+            duration,
+          };
+        }
+
+      } catch (error) {
+        const err = error as Error;
+        logger.error({ jobId, error: err.message, stack: err.stack }, `[Worker] 任务失败: ${jobId}`);
+
+        await markStreamFailed(jobId, err);
+        throw error; // 让 BullMQ 处理重试
+      }
+    },
+    {
+      concurrency: WORKER_CONCURRENCY,
+      connection: redisConfig,
+    }
+  );
+  
+  // 设置 Worker 事件
+  setupWorkerEvents(worker);
+  
   logger.info('Tasks processor started with BullMQ');
 }
 // 导出 worker（用于测试）

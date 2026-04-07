@@ -56,19 +56,62 @@ const redisClient = RedisClientSingleton.getInstance();
 const redisSubClient = RedisClientSingleton.getSubInstance();
 
 // 队列名称
-const DOCUMENT_QUEUE = 'document:processing:queue';
 export const DOCUMENT_STATUS_PREFIX = 'document:status:';
+// ===== Redis 配置 =====
+
+export function getRedisConfig() {
+  return {
+    host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
+    port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
+    db: Number(process.env.REDIS_DB) || 0
+  };
+}
 
 // 创建 BullMQ 队列
 const documentQueue = new Queue('document-processing', {
-  connection: {
-    host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
-    port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
-    password: process.env.REDIS_PASSWORD,
-    db: Number(process.env.REDIS_DB) || 0
-  }
+  connection: getRedisConfig()
 });
 
+// 添加监听器确认队列状态
+documentQueue.on('error', (err) => {
+  console.error('BullMQ queue error:', err);
+});
+
+documentQueue.on('waiting', () => {
+  console.log('Queue is waiting');
+});
+
+// 检查连接状态
+// documentQueue.client.on('connect', () => {
+//   console.log('BullMQ connected to Redis');
+// });
+// 将变量置于模块顶层，但不导出，确保外部只能通过函数访问
+let reportQueue: Queue | null = null;
+export function getReportQueue(): Queue {
+  // 使用双重检查或简单的 null 判断
+  if (!reportQueue) {
+    const redisConfig = getRedisConfig();
+
+    logger.info({ redisConfig }, 'Initializing Report Queue');
+
+    reportQueue = new Queue('report', {
+      connection: redisConfig,
+      // 可以在这里添加默认配置，如 defaultJobOptions
+    });
+
+    // 绑定全局错误监听
+    reportQueue.on('error', (err) => {
+      logger.error({ err }, '[Batch API] Queue error');
+    });
+
+    // 可选：监听连接成功
+    reportQueue.on('waiting', () => {
+      logger.debug('Report Queue is waiting for jobs');
+    });
+  }
+
+  return reportQueue;
+}
 /**
  * 发送消息到队列
  * @param queueName 队列名称
@@ -150,37 +193,35 @@ export async function getDocumentStatus(documentId: string): Promise<string | nu
  * @param tempFilePath 临时文件路径
  * @returns 任务ID
  */
-export async function sendDocumentProcessingTask(
+export async function appendDocumentProcessingTask(
   documentId: string,
   projectId: string,
   fileName: string,
   fileType: string,
   tempFilePath: string
 ): Promise<string> {
-  const job = await documentQueue.add('process-document', {
-    documentId,
-    projectId,
-    fileName,
-    fileType,
-    tempFilePath,
-    createdAt: new Date().toISOString()
-  },{ 
-    jobId: documentId, // 显式指定 ID
-    removeOnComplete: true 
-  });
+  try {
+    if (!documentQueue) {
+      throw new Error('Document queue is not initialized');
+    }
+    const job = await documentQueue.add('process-document', {
+      documentId,
+      projectId,
+      fileName,
+      fileType,
+      tempFilePath,
+      createdAt: new Date().toISOString()
+    }, {
+      jobId: documentId, // 显式指定 ID
+    });
 
-  await setDocumentStatus(documentId, 'PENDING');
-
-  return job.id || '';
-}
-
-/**
- * 获取文档处理任务（使用传统方法，保持兼容性）
- * @param timeout 超时时间（秒）
- * @returns 任务信息或null
- */
-export async function getDocumentProcessingTask(timeout: number = 0): Promise<any | null> {
-  return await getFromQueue(DOCUMENT_QUEUE, timeout);
+    // await setDocumentStatus(documentId, 'PENDING');
+    logger.info({ jobId: job.id }, 'append new document processing task to queue');
+    return job.id || '';
+  } catch (error) {
+    console.error('Failed to send document processing task:', error);
+    throw error;
+  }
 }
 
 /**
@@ -188,54 +229,35 @@ export async function getDocumentProcessingTask(timeout: number = 0): Promise<an
  * @param documentId 文档ID
  * @param progress 进度（0-100）
  * @param msg 进度消息
+ * @param status 任务状态
  */
-export async function updateDocumentProgress(documentId: string, progress: number, msg: string): Promise<void> {
+export async function updateDocumentProgress(documentId: string, progress: number, message: string, status: string = 'processing'): Promise<void> {
   try {
+    // logger.info({ documentId, progress, message, status }, 'Updating document progress');
+
+    // 1. 先更新任务队列状态（持久化）
     await documentQueue.updateJobProgress(documentId, progress);
-    redisSubClient.publish(`${DOCUMENT_STATUS_PREFIX}${documentId}`, JSON.stringify({ progress, msg }));
+
+    // 2. 【新增测试延迟】等待 3 秒，确保 SSE 订阅端已经连接并就绪
+    logger.info({ documentId }, 'Waiting 3s before publishing...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 3. 发布消息
+    const sendMsg = JSON.stringify({ progress, message, status });
+    const channel = `${DOCUMENT_STATUS_PREFIX}${documentId}`;
+
+    logger.info({ documentId, channel, sendMsg }, 'Publishing progress update to channel');
+
+    // 建议加上 await 确保发布动作完成
+    await redisSubClient.publish(channel, sendMsg);
+
   } catch (error) {
-    console.error('Failed to update document progress:', error);
+    logger.error({ documentId, error }, 'Failed to update document progress');
     throw error;
   }
 }
 
-// ===== Redis 配置 =====
 
-export function getRedisConfig() {
-  return {
-    host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
-    port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
-    password: process.env.REDIS_PASSWORD,
-    db: Number(process.env.REDIS_DB) || 0
-  };
-}
-// 将变量置于模块顶层，但不导出，确保外部只能通过函数访问
-let reportQueue: Queue | null = null;
-export function getReportQueue(): Queue {
-  // 使用双重检查或简单的 null 判断
-  if (!reportQueue) {
-    const redisConfig = getRedisConfig();
-    
-    logger.info({ redisConfig }, 'Initializing Report Queue');
-
-    reportQueue = new Queue('report', { 
-      connection: redisConfig,
-      // 可以在这里添加默认配置，如 defaultJobOptions
-    });
-
-    // 绑定全局错误监听
-    reportQueue.on('error', (err) => {
-      logger.error({ err }, '[Batch API] Queue error');
-    });
-
-    // 可选：监听连接成功
-    reportQueue.on('waiting', () => {
-      logger.debug('Report Queue is waiting for jobs');
-    });
-  }
-
-  return reportQueue;
-}
 
 // 导出 BullMQ 队列
-export { redisClient, redisSubClient, DOCUMENT_QUEUE, documentQueue };
+export { redisClient, redisSubClient,  documentQueue };

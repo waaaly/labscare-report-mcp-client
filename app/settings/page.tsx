@@ -19,21 +19,19 @@ export default function SettingsPage() {
   const [isTesting, setIsTesting] = useState(false);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<string[]>([]);
-  
+
   const [formData, setFormData] = useState({
     name: currentLab?.name || '',
     domain: currentLab?.domain || '',
     version: currentLab?.version || '',
-    account: currentLab?.account || '',
     token: currentLab?.token || '',
   });
- useEffect(() => {
+  useEffect(() => {
     if (currentLab) {
       setFormData({
         name: currentLab.name,
         domain: currentLab.domain,
         version: currentLab.version,
-        account: currentLab.account,
         token: currentLab.token,
       });
     }
@@ -110,13 +108,13 @@ export default function SettingsPage() {
     setIsSaving(true);
     try {
       const success = await updateLab({
+        id: currentLab.id,
         name: formData.name,
         domain: formData.domain,
         version: formData.version,
-        account: formData.account,
         token: formData.token,
       });
-      
+
       if (success) {
         toast.success(t('success'));
       } else {
@@ -146,40 +144,40 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Lab Name</label>
-              <Input 
-                value={formData.name} 
+              <Input
+                value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain</label>
-              <Input 
-                value={formData.domain} 
+              <Input
+                value={formData.domain}
                 onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                placeholder="e.g., clinical, research" 
+                placeholder="e.g., clinical, research"
               />
             </div>
-              <div className="space-y-2">
+            {/* <div className="space-y-2">
               <label className="text-sm font-medium">Account</label>
-              <Input 
-                value={formData.account} 
+              <Input
+                value={formData.account}
                 onChange={(e) => setFormData({ ...formData, account: e.target.value })}
                 placeholder="Enter account name"
               />
-            </div>
+            </div> */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Token</label>
-              <Input 
+              <Input
                 type="password"
-                value={formData.token} 
+                value={formData.token}
                 onChange={(e) => setFormData({ ...formData, token: e.target.value })}
                 placeholder="Enter API token"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Version</label>
-              <Input 
-                value={formData.version} 
+              <Input
+                value={formData.version}
                 onChange={(e) => setFormData({ ...formData, version: e.target.value })}
               />
             </div>
@@ -218,16 +216,16 @@ export default function SettingsPage() {
                 </div>
               </div>
               {isConnected ? (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleDisconnectMcp}
                 >
                   Disconnect
                 </Button>
               ) : (
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={handleConnectMcp}
                   disabled={isConnecting}
                 >
@@ -245,20 +243,20 @@ export default function SettingsPage() {
                 </Button>
               )}
             </div>
-            
+
             {mcpError && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-200">
                 <p className="text-sm text-red-600">{mcpError}</p>
               </div>
             )}
-            
+
             {isConnected && availableTools.length > 0 && (
               <div>
                 <p className="text-sm font-medium mb-2">Available Tools:</p>
                 <div className="flex flex-wrap gap-2">
                   {availableTools.map((tool) => (
-                    <span 
-                      key={tool} 
+                    <span
+                      key={tool}
                       className="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary"
                     >
                       {tool}
