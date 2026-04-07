@@ -12,12 +12,7 @@ class RedisClientSingleton {
   // 获取用于普通操作的实例
   public static getInstance(): Redis {
     if (!RedisClientSingleton.instance) {
-      RedisClientSingleton.instance = new Redis({
-        host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
-        port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
-        password: process.env.REDIS_PASSWORD,
-        db: Number(process.env.REDIS_DB) || 0
-      });
+      RedisClientSingleton.instance = new Redis(getRedisConfig());
 
       // 错误处理
       RedisClientSingleton.instance.on('error', (err) => {
@@ -31,15 +26,7 @@ class RedisClientSingleton {
   // 获取专门用于订阅的实例
   public static getSubInstance(): Redis {
     if (!RedisClientSingleton.subInstance) {
-      RedisClientSingleton.subInstance = new Redis({
-        host: process.env.REDIS_URL?.split('://')[1].split(':')[0] || 'localhost',
-        port: Number(process.env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
-        password: process.env.REDIS_PASSWORD,
-        db: Number(process.env.REDIS_DB) || 0,
-        maxRetriesPerRequest: null,
-        // 增加重连保护
-        enableReadyCheck: true,
-      });
+      RedisClientSingleton.subInstance = new Redis(getRedisConfig());
 
       // 错误处理
       RedisClientSingleton.subInstance.on('error', (err) => {
@@ -69,7 +56,8 @@ export function getRedisConfig() {
 
 // 创建 BullMQ 队列
 const documentQueue = new Queue('document-processing', {
-  connection: getRedisConfig()
+  connection: getRedisConfig(),
+  
 });
 
 // 添加监听器确认队列状态
@@ -191,6 +179,7 @@ export async function getDocumentStatus(documentId: string): Promise<string | nu
  * @param fileName 文件名
  * @param fileType 文件类型
  * @param tempFilePath 临时文件路径
+ * @param reportId 报告ID
  * @returns 任务ID
  */
 export async function appendDocumentProcessingTask(
@@ -198,7 +187,8 @@ export async function appendDocumentProcessingTask(
   projectId: string,
   fileName: string,
   fileType: string,
-  tempFilePath: string
+  tempFilePath: string,
+  reportId?: string
 ): Promise<string> {
   try {
     if (!documentQueue) {
@@ -210,13 +200,14 @@ export async function appendDocumentProcessingTask(
       fileName,
       fileType,
       tempFilePath,
+      reportId,
       createdAt: new Date().toISOString()
     }, {
       jobId: documentId, // 显式指定 ID
     });
 
     // await setDocumentStatus(documentId, 'PENDING');
-    logger.info({ jobId: job.id }, 'append new document processing task to queue');
+    logger.info({ jobId: job.id, reportId }, 'append new document processing task to queue');
     return job.id || '';
   } catch (error) {
     console.error('Failed to send document processing task:', error);
@@ -227,11 +218,12 @@ export async function appendDocumentProcessingTask(
 /**
  * 更新文档处理进度
  * @param documentId 文档ID
+ * @param fileName 文件名
  * @param progress 进度（0-100）
  * @param msg 进度消息
  * @param status 任务状态
  */
-export async function updateDocumentProgress(documentId: string, progress: number, message: string, status: string = 'processing'): Promise<void> {
+export async function updateDocumentProgress(documentId: string,fileName: string, progress: number, message: string, status: string = 'processing'): Promise<void> {
   try {
     // logger.info({ documentId, progress, message, status }, 'Updating document progress');
 
@@ -243,7 +235,7 @@ export async function updateDocumentProgress(documentId: string, progress: numbe
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     // 3. 发布消息
-    const sendMsg = JSON.stringify({ progress, message, status });
+    const sendMsg = JSON.stringify({ progress,fileName, message, status });
     const channel = `${DOCUMENT_STATUS_PREFIX}${documentId}`;
 
     logger.info({ documentId, channel, sendMsg }, 'Publishing progress update to channel');

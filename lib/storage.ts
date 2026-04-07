@@ -23,7 +23,7 @@ export async function writeTempFile(file: File): Promise<string> {
     const buffer = Buffer.from(bytes);
     
     // 生成唯一文件名
-    const uniqueName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${file.name}`;
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${file.name.split('.').pop()}`;
     const tempFilePath = path.join(TEMP_DIR, uniqueName);
     
     // 写入文件

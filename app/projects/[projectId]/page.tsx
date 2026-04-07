@@ -8,13 +8,20 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, X, Badge, Database } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, XCircle, X, Badge, Database } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+type DocumentProgress = {
+  progress: number;
+  fileName: string;
+  message: string;
+  status: string;
+}
 
 export default function ProjectWorkspacePage() {
   const params = useParams();
@@ -47,7 +54,7 @@ export default function ProjectWorkspacePage() {
     };
   }, [projectId, currentLab?.id, loadProject, setCurrentProject, loadReports]);
 
-  const [documentProgress, setDocumentProgress] = useState<Record<string, { progress: number; message: string; status: string }>>({});
+  const [documentProgress, setDocumentProgress] = useState<Record<string, DocumentProgress>>({});
   const [completedDocuments, setCompletedDocuments] = useState<number>(0);
   const totalDocumentsRef = useRef<number>(0);
 
@@ -61,32 +68,42 @@ export default function ProjectWorkspacePage() {
           ...prev,
           [documentId]: {
             progress: data.progress || 0,
+            fileName: data.fileName || '',
             message: data.message || '',
-            status: data.status || 'processing'
+            status: data.status || 'processing',
           }
         }));
 
         if (data.status === 'completed' || data.status === 'failed') {
           eventSource.close();
-          setCompletedDocuments(prev => prev + 1);
+          setCompletedDocuments(prev => {
+            const newCompleted = prev + 1;
+            
+            // 检查是否所有文档都已完成
+            if (newCompleted === totalDocumentsRef.current) {
+              setTimeout(() => {
+                setIsProgressDialogOpen(false);
+                setDocumentProgress({});
+                setCompletedDocuments(0);
+                totalDocumentsRef.current = 0;
 
-          // 检查是否所有文档都已完成
-          if (completedDocuments + 1 === totalDocumentsRef.current) {
-            setTimeout(() => {
-              setIsProgressDialogOpen(false);
-              setDocumentProgress({});
-              setCompletedDocuments(0);
-              totalDocumentsRef.current = 0;
+                // 显示成功/失败消息
+                const allCompleted = Object.values(documentProgress).every(doc => doc.status === 'completed');
+                if (allCompleted) {
+                  toast.success(`${newCompleted} files uploaded successfully`);
+                } else {
+                  toast.error('Some files failed to upload');
+                }
 
-              // 显示成功/失败消息
-              const allCompleted = Object.values(documentProgress).every(doc => doc.status === 'completed');
-              if (allCompleted) {
-                toast.success(`${totalDocumentsRef.current} files uploaded successfully`);
-              } else {
-                toast.error('Some files failed to upload');
-              }
-            }, 1000);
-          }
+                // 重新获取报告列表以更新文档信息
+                if (selectedReportId && currentLab?.id) {
+                  loadReports(projectId, currentLab.id);
+                }
+              }, 500);
+            }
+            
+            return newCompleted;
+          });
         }
       } catch (error) {
         console.error('Error parsing SSE message:', error);
@@ -118,11 +135,16 @@ export default function ProjectWorkspacePage() {
     try {
       // 准备表单数据，包含所有选中的文件
       const formData = new FormData();
-      
+
       // 获取当前选中的报告
       const selectedReport = reports.find(report => report.id === selectedReportId);
       const reportName = selectedReport?.name || '';
-      
+
+      // 添加 reportId 到表单数据
+      if (selectedReportId) {
+        formData.append('reportId', selectedReportId);
+      }
+
       selectedFiles.forEach(file => {
         // 创建新的File对象，添加报告名称作为前缀
         const prefixedFileName = reportName ? `${reportName}-${file.name}` : file.name;
@@ -143,10 +165,11 @@ export default function ProjectWorkspacePage() {
           setCompletedDocuments(0);
 
           // 初始化进度状态
-          const initialProgress: Record<string, { progress: number; message: string; status: string }> = {};
+          const initialProgress: Record<string, DocumentProgress> = {};
           data.forEach((doc: any) => {
             initialProgress[doc.id] = {
               progress: 0,
+              fileName: doc.fileName || '',
               message: 'Starting upload...',
               status: 'processing'
             };
@@ -165,10 +188,7 @@ export default function ProjectWorkspacePage() {
           setIsFileUploadDrawerOpen(false);
           setSelectedFiles([]);
 
-          // 重新获取报告列表以更新文档信息
-          if (selectedReportId && currentLab?.id) {
-            setTimeout(() => loadReports(projectId, currentLab.id), 1000);
-          }
+
         }
       } else {
         const data = await response.json();
@@ -371,7 +391,7 @@ export default function ProjectWorkspacePage() {
                               return (
                                 <div key={doc.id} className="w-full aspect-square rounded-lg overflow-hidden border bg-background">
                                   <img
-                                    src={doc.url || ''}
+                                    src={process.env.MINIO_PUBLIC_HOST + doc.url || ''}
                                     alt={doc.name}
                                     className="w-full h-full object-cover"
                                   />
@@ -533,33 +553,52 @@ export default function ProjectWorkspacePage() {
       </Drawer>
 
       <Dialog open={isProgressDialogOpen} onOpenChange={setIsProgressDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Upload Progress</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-[#134E4A]">Upload Progress</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-6 py-4">
             {Object.entries(documentProgress).map(([docId, progress]) => (
-              <div key={docId} className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Processing...</span>
-                  <span>{progress.progress}%</span>
+              <div key={docId} className="space-y-3 p-4 rounded-lg bg-[#F0FDFA] border border-[#2DD4BF]/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className={`p-2 rounded-full ${progress.status === 'completed' ? 'bg-green-100 text-green-600' :
+                      progress.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-[#2DD4BF]/20 text-[#0D9488]'
+                      }`}>
+                      {progress.status === 'completed' ? (
+                        <CheckCircle2 className="h-5 w-5" />
+                      ) : progress.status === 'failed' ? (
+                        <XCircle className="h-5 w-5" />
+                      ) : (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-[#134E4A]">{progress.fileName || 'Processing file'}</div>
+                      <div className="text-xs text-[#134E4A]/70">{progress.message}</div>
+                    </div>
+                  </div>
+                  <div className="text-sm font-medium text-[#134E4A]">{progress.progress}%</div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className={`h-2.5 rounded-full transition-all duration-300 ${progress.status === 'completed' ? 'bg-green-600' :
-                        progress.status === 'failed' ? 'bg-red-600' : 'bg-cyan-600'
+                    className={`h-2 rounded-full transition-all duration-300 ${progress.status === 'completed' ? 'bg-green-500' :
+                      progress.status === 'failed' ? 'bg-red-500' : 'bg-[#0D9488]'
                       }`}
                     style={{ width: `${progress.progress}%` }}
                   ></div>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {progress.message}
-                </div>
               </div>
             ))}
-            <div className="text-sm text-muted-foreground">
-              {completedDocuments}/{totalDocumentsRef.current} files processed
-            </div>
+          </div>
+          <div className="flex justify-end pt-4 border-t border-gray-200">
+            <Button
+              onClick={() => setIsProgressDialogOpen(false)}
+              disabled={Object.values(documentProgress).some(p => p.status === 'processing')}
+              className="bg-[#0D9488] hover:bg-[#0D9488]/90 text-white"
+            >
+              {Object.values(documentProgress).some(p => p.status === 'processing') ? 'Processing...' : 'Close'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

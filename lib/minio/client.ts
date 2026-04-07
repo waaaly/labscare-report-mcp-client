@@ -1,13 +1,29 @@
-import { Client } from 'minio';
+import { Client, ClientOptions } from 'minio';
 
-const minioClient = new Client({
-  endPoint: process.env.MINIO_ENDPOINT?.split(':')[0] || 'localhost',
-  //port: parseInt(process.env.MINIO_ENDPOINT?.split(':')[1] || '9000'),
-  useSSL: process.env.MINIO_USE_SSL === 'true',
-  accessKey: process.env.MINIO_ACCESS_KEY || 'admin',
-  secretKey: process.env.MINIO_SECRET_KEY || 'password123',
-  pathStyle: true
-});
+export function getMinioConfig(): ClientOptions {
+  var config: ClientOptions = {
+    endPoint: process.env.MINIO_ENDPOINT?.split(':')[0] || 'localhost',
+    useSSL: process.env.MINIO_USE_SSL === 'true',
+    accessKey: process.env.MINIO_ACCESS_KEY || 'admin',
+    secretKey: process.env.MINIO_SECRET_KEY || 'admin',
+    pathStyle: true
+  };
+  if (!process.env.MINIO_ENDPOINT) {
+    return { ...config, port: 9000 };
+  } else {
+    return config;
+  }
+}
+
+export function getMinioPublicHost(): string {
+   if (!process.env.MINIO_ENDPOINT) {
+    return 'http://localhost:9001';
+  } else {
+    return process.env.MINIO_ENDPOINT;
+  }
+}
+
+const minioClient = new Client(getMinioConfig());
 
 const BUCKET_NAME = process.env.MINIO_BUCKET || 'documents';
 const COVER_BUCKET_NAME = 'docscover';
@@ -35,7 +51,7 @@ export async function uploadFile(
 
   const timestamp = Date.now();
   const uniqueFileName = `${timestamp}-${fileName}`;
-  try{
+  try {
 
     await minioClient.putObject(
       BUCKET_NAME,
@@ -44,12 +60,12 @@ export async function uploadFile(
       fileBuffer.length,
       { 'Content-Type': contentType }
     );
-  }catch(error){
+  } catch (error) {
     console.error('Failed to upload file:', error);
     throw error;
   }
 
-  const url = `${process.env.MINIO_ENDPOINT}/${BUCKET_NAME}/${uniqueFileName}`;
+  const url = `/${BUCKET_NAME}/${uniqueFileName}`;
   return url;
 }
 

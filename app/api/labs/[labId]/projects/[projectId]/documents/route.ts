@@ -40,10 +40,15 @@ async function validateFile(file: File): Promise<void> {
     'image/gif',
     'image/webp',
     'application/json',
-    'text/markdown'
+    'text/markdown',
+    'text/plain' // 允许 text/plain 类型，用于 .md 和 .markdown 文件
   ];
 
-  if (!allowedTypes.includes(file.type)) {
+  // 检查文件类型是否在允许列表中
+  // 对于 .md 和 .markdown 文件，即使 MIME 类型是 text/plain 也允许
+  const isMdFile = file.name.toLowerCase().endsWith('.md') || file.name.toLowerCase().endsWith('.markdown');
+  
+  if (!allowedTypes.includes(file.type) && !isMdFile) {
     const error = new Error('Invalid file type. Only PDF, DOC, DOCX, images, JSON, and MD files are allowed.') as ValidationError;
     error.name = 'ValidationError';
     throw error;
@@ -64,9 +69,9 @@ export async function POST(
 ) {
   try {
     const { projectId } = await context.params;
-    const { createId } = require('@paralleldrive/cuid2');
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
+    const reportId = formData.get('reportId') as string;
     
     if (files.length === 0) {
       const error = new Error('No files provided') as ValidationError;
@@ -79,25 +84,25 @@ export async function POST(
     for (const file of files) {
       // 验证文件
       await validateFile(file);
-      
-      const documentId = `doc${createId()}`;
-      
       // 写入临时文件
       const tempFilePath = await writeTempFile(file);
-
+      logger.info(`[Upload Router]: Wrote file to temp path: ${tempFilePath}`);
+      const documentId = `doc${tempFilePath.match(/([^\\]+)\.[^.]+$/)?.[1]}`;
       // 发送消息到队列
       const taskId = await appendDocumentProcessingTask(
         documentId,
         projectId,
         file.name,
         file.type,
-        tempFilePath
+        tempFilePath,
+        reportId
       );
-      logger.info({ taskId, documentId, projectId, fileName: file.name, fileType: file.type, tempFilePath }, 'Sent document processing task');
+      logger.info({ taskId, documentId, projectId, reportId, fileName: file.name, fileType: file.type, tempFilePath }, 'Sent document processing task');
       results.push({
         taskId,
         id: documentId,
         projectId: projectId,
+        reportId: reportId,
         name: file.name,
         type: file.type,
         status: 'PENDING',

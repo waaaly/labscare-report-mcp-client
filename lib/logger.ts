@@ -2,7 +2,6 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import pino from 'pino';
 
-const isBrowser = typeof window !== 'undefined';
 const isDevelopment = process.env.NODE_ENV === 'development';
 const logger = pino({
   level: isDevelopment ? 'debug' : 'info',

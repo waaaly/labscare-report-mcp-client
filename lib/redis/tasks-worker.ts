@@ -9,7 +9,6 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { logger } from "../logger";
 import { createAgentInstance } from "../llm/agent-factory";
 import {
   publishStreamChunk,
@@ -17,7 +16,7 @@ import {
   markStreamFailed,
 } from "../queue/stream-publisher";
 import { getRedisConfig } from "./client";
-
+import Pino from 'pino';
 
 const redisConfig = getRedisConfig();
 
@@ -53,7 +52,7 @@ let worker: Worker<ReportTaskData, ReportTaskResult> | null = null;
 
 // ===== Worker 事件处理 =====
 
-function setupWorkerEvents(worker: Worker<ReportTaskData, ReportTaskResult>) {
+function setupWorkerEvents(worker: Worker<ReportTaskData, ReportTaskResult>,logger: Pino.Logger) {
   worker.on('error', (err) => {
     logger.error({ err }, '[Worker] Worker error');
   });
@@ -78,9 +77,10 @@ function setupWorkerEvents(worker: Worker<ReportTaskData, ReportTaskResult>) {
  */
 async function buildMessages(
   prompt: string,
+  logger: Pino.Logger,
   contextJson?: string,
   messagesJson?: string,
-  files?: Array<any>
+  files?: Array<any>,
 ): Promise<Array<any>> {
   const { HumanMessage, AIMessage } = await import("@langchain/core/messages");
 
@@ -141,7 +141,8 @@ async function buildMessages(
 async function executeAgentStreaming(
   jobId: string,
   agent: any,
-  messages: any[]
+  messages: any[],
+  logger: Pino.Logger
 ): Promise<{ tokensUsed?: number }> {
   let firstTokenTime: number | null = null;
   let tokensUsed = 0;
@@ -213,7 +214,7 @@ async function executeAgentStreaming(
 
 // ===== 优雅关闭 =====
 
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', async (logger: Pino.Logger) => {
   logger.info('[Worker] 收到 SIGTERM，正在关闭...');
   if (worker) {
     await worker.close();
@@ -221,7 +222,7 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', async (logger: Pino.Logger) => {
   logger.info('[Worker] 收到 SIGINT，正在关闭...');
   if (worker) {
     await worker.close();
@@ -409,7 +410,7 @@ module.exports = reportScript;
 /**
  * 启动文档处理器
  */
-export function startTasksProcessor(): void {
+export function startTasksProcessor(logger: Pino.Logger): void {
   if (worker) {
     logger.info('Tasks processor already started');
     return;
@@ -453,10 +454,10 @@ export function startTasksProcessor(): void {
           const agent = await createAgentInstance();
 
           // 2. 构建消息
-          const messages = await buildMessages(prompt, contextJson, messagesJson, files);
+          const messages = await buildMessages(prompt, logger, contextJson, messagesJson, files);
 
           // 3. 执行 Agent 并发布流式结果
-          const result = await executeAgentStreaming(jobId, agent, messages);
+          const result = await executeAgentStreaming(jobId, agent, messages, logger);
 
           // 4. 标记完成
           const duration = Date.now() - startTime;
@@ -489,7 +490,7 @@ export function startTasksProcessor(): void {
   );
   
   // 设置 Worker 事件
-  setupWorkerEvents(worker);
+  setupWorkerEvents(worker, logger);
   
   logger.info('Tasks processor started with BullMQ');
 }

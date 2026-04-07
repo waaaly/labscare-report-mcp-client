@@ -116,7 +116,7 @@ export function getRedisConfig() {
 
   return {
     host: url.hostname,
-    port: parseInt(url.port, 10) || 6379,
+    port:  Number(env.REDIS_URL?.split(':')[2].split('/')[0]) || 6379,
     password: env.REDIS_PASSWORD || url.password || undefined,
     db: env.REDIS_DB,
   };

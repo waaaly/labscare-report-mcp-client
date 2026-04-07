@@ -1,177 +1,257 @@
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, WorkerOptions } from 'bullmq';
 import { readTempFile, deleteTempFile } from '@/lib/storage';
 import { processDocument } from '@/lib/docx/converter';
 import { uploadFile } from '@/lib/minio/client';
 import prisma from '@/lib/prisma';
 import { sanitizeFileName } from '@/lib/utils';
 import { getRedisConfig, updateDocumentProgress } from './client';
-import { logger } from '../logger';
-// 1. 定义全局类型，防止 TS 报错
+import Pino from 'pino';
+import fs from 'fs';
+
+// ==================== 类型定义 ====================
+interface DocumentJobData {
+  documentId: string;
+  projectId: string;
+  fileName: string;
+  fileType: string;
+  type: string; // MIME type
+  tempFilePath: string;
+  reportId?: string;
+}
+
+// 全局单例（防止多实例启动）
 declare global {
   var docWorker: Worker | undefined;
 }
 
-/**
- * 检查文件是否已存在
- * @param projectId 项目ID
- * @param fileName 文件名
- * @returns 是否已存在
- */
-async function checkFileExists(documentId: string, fileName: string): Promise<boolean> {
+// ==================== 工具函数 ====================
+async function waitForFile(
+  filePath: string,
+  maxRetries = 5,
+  logger: Pino.Logger
+): Promise<boolean> {
+  for (let i = 0; i < maxRetries; i++) {
+    if (fs.existsSync(filePath)) {
+      return true;
+    }
+    logger.info(`[Processing Task] 等待文件就绪... 第 ${i + 1} 次重试`);
+    await new Promise((resolve) => setTimeout(resolve, 300 * (i + 1))); // 指数退避
+  }
+  return false;
+}
+
+async function checkFileExists(documentId: string, fileName: string, logger: Pino.Logger): Promise<boolean> {
   try {
-    logger.info(`[Processing Task]: ${documentId} Checking file existence: ${fileName}`);
-    const existingFile = await prisma.document.findFirst({
-      where: {
-        id: documentId,
-        name: fileName
-      }
+    const existing = await prisma.document.findFirst({
+      where: { name: fileName, projectId: { not: undefined } }, // 可根据需要加 projectId 过滤
+      select: { id: true },
     });
-    return !!existingFile;
+    return !!existing;
   } catch (error) {
-    logger.error(`[Processing Task]: ${documentId} Error checking file existence: ${error}`);
+    logger.error(`[Processing Task]: ${documentId} 检查文件存在性失败: ${error}`);
     return false;
   }
 }
 
-async function processor(job: Job) {
-  const task = job.data;
+async function handleError(
+  documentId: string,
+  fileName: string,
+  error: unknown,
+  logger: Pino.Logger,
+  stage: string
+): Promise<void> {
+  const msg = `${stage}: ${error}`;
+  logger.error(`[Processing Task]: ${documentId} ${msg}`);
   try {
-    process.stdout.write(`\n🚀 WORKER START: ${job.id} \n`);
-
-    // 检查文件是否已存在
-    const exists = await checkFileExists(task.documentId, task.fileName);
-    if (exists) {
-      deleteTempFile(task.tempFilePath);
-      await updateDocumentProgress(task.documentId, 100, '存在同名文件!', 'failed');
-      throw new Error('存在同名文件!');
-    }
-    await updateDocumentProgress(task.documentId, 5, '未发现同名文件,开始处理...', 'processing');
-    // 创建初始文档记录
-    const document = await prisma.document.create({
-      data: {
-        id: task.documentId,
-        projectId: task.projectId,
-        name: task.fileName,
-        type: task.fileType,
-        url: '', // 临时空值，后续会更新
-        status: 'PROCESSING'
-      }
+    await updateDocumentProgress(documentId, fileName, 100, msg, 'failed');
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { status: 'FAILED' },
     });
-    if (document) {
-      logger.info(`[Processing Task]: ${job.id}` + 'Created document record');
-      // 读取临时文件
-      const buffer = await readTempFile(task.tempFilePath);
-
-      let url = '';
-      let pdf = null;
-      let coverUrl = null;
-
-      // 检查是否为doc或docx文件
-      const isDocFile = task.type === 'application/msword' || task.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
-      if (isDocFile) {
-        // 处理文件
-        await updateDocumentProgress(task.documentId, 20, '正在处理文件', 'processing');
-        const { pdfBuffer, coverBuffer } = await processDocument(buffer, task.fileType, task.fileName);
-        await updateDocumentProgress(task.documentId, 50, '文件处理完成', 'processing');
-
-        // 安全处理文件名
-        const safeFileName = sanitizeFileName(task.fileName);
-        const pdfFileName = safeFileName.replace(/\.(doc|docx)$/i, '.pdf');
-        const coverFileName = `${safeFileName.replace(/\.[^.]+$/, '')}_cover.jpg`;
-        await updateDocumentProgress(task.documentId, 60, '正在上传文件', 'processing');
-        // 并行上传文件
-        const [fileUrl, pdfUrl, cover] = await Promise.all([
-          uploadFile(safeFileName, buffer, task.fileType),
-          uploadFile('pdf/' + pdfFileName, pdfBuffer, 'application/pdf'),
-          coverBuffer ? uploadFile('cover/' + coverFileName, coverBuffer, 'image/jpeg') : Promise.resolve(null)
-        ]);
-        url = fileUrl;
-        pdf = pdfUrl;
-        coverUrl = cover;
-      } else {
-        // 直接上传其他类型的文件
-        await updateDocumentProgress(task.documentId, 20, '正在上传文件', 'processing');
-        const safeFileName = sanitizeFileName(task.fileName);
-        url = await uploadFile(safeFileName, buffer, task.type);
-        await updateDocumentProgress(task.documentId, 80, '文件上传完成', 'processing');
-      }
-
-      // 更新数据库
-      await prisma.document.update({
-        where: { id: task.documentId },
-        data: {
-          status: 'COMPLETED',
-          url,
-          pdf,
-          cover: coverUrl
-        }
-      });
-
-      // 清理临时文件
-      deleteTempFile(task.tempFilePath);
-      await updateDocumentProgress(task.documentId, 100, '已清理临时文件,任务完成', 'completed');
-      logger.info(`[Processing Task]: ${job.id} completed successfully`);
-    } else {
-      await updateDocumentProgress(task.documentId, 100, '任务处理失败,文档记录不存在', 'failed');
-    }
-
-  } catch (error) {
-    console.error(`[Processing Task]: ${job.id} Error processing task ${job.id}:`, error);
-    await updateDocumentProgress(task.documentId, 100, `任务处理失败: ${error}`, 'failed');
-    // 标记为失败
-    // await prisma.document.update({
-    //   where: { id: task.documentId },
-    //   data: { status: 'FAILED' }
-    // });
-    // 清理临时文件
-    deleteTempFile(task.tempFilePath);
-    logger.info(`[Processing Task]: ${job.id} failed`);
-
-    // 抛出错误，让 BullMQ 处理重试
-    throw error;
+  } catch (cleanupErr) {
+    logger.error(`[Processing Task]: ${documentId} 清理失败: ${cleanupErr}`);
   }
 }
 
-let worker: Worker | null = null;
+// ==================== 核心处理器 ====================
+async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promise<void> {
+  const { documentId, fileName, projectId, fileType, tempFilePath, reportId } = job.data;
+  const jobId = job.id;
+  const startTime = Date.now();
 
-/**
- * 启动文档处理器
- */
-export function startDocumentProcessor(): void {
+  // 为每个任务创建一个带前缀的子 logger（强烈推荐！）
+  const taskLogger = logger.child({
+    component: "Worker",
+    jobId,
+    documentId,
+    fileName
+  });
 
+  let tempFileFound = false;
+  let buffer: Buffer | null = null;
+  let documentCreated = false;
+
+  try {
+    taskLogger.info(`🚀 开始处理任务 (耗时将从现在开始计时)`);
+
+    // 1. 等待并读取临时文件
+    tempFileFound = await waitForFile(tempFilePath, 6, taskLogger);
+    if (!tempFileFound) {
+      throw new Error(`临时文件不存在或等待超时: ${tempFilePath}`);
+    }
+
+    buffer = await readTempFile(tempFilePath);
+    taskLogger.info(`临时文件读取成功，Buffer 大小: ${buffer.length} bytes`);
+
+    // 2. 重名检查
+    const exists = await checkFileExists(documentId, fileName, taskLogger);
+    if (exists) {
+      throw new Error(`文件已存在: ${fileName}`);
+    }
+
+    // 3. 创建文档记录
+    await updateDocumentProgress(documentId, fileName, 20, '开始处理文件...', 'processing');
+    await prisma.document.create({
+      data: {
+        id: documentId,
+        projectId,
+        reportId: reportId,
+        name: fileName,
+        type: fileType,
+        url: '',
+        status: 'PROCESSING',
+      },
+    });
+    documentCreated = true;
+    taskLogger.info('文档记录创建成功');
+
+    // 4. 处理文件
+    const isDocFile = fileType.includes('word') || fileType.includes('docx') || fileType.includes('msword');
+
+    let url = '', pdf: string | null = null, coverUrl: string | null = null;
+
+    if (isDocFile) {
+      taskLogger.info('检测到 Word 文档，开始转换...');
+      await updateDocumentProgress(documentId, fileName, 50, '正在转换 Word 为 PDF...', 'processing');
+
+      const { pdfBuffer, coverBuffer } = await processDocument(buffer, fileType, fileName);
+
+      const safeName = sanitizeFileName(fileName);
+      const pdfName = safeName.replace(/\.(doc|docx)$/i, '.pdf');
+      const coverName = `${safeName.replace(/\.[^.]+$/, '')}_cover.jpg`;
+
+      await updateDocumentProgress(documentId, fileName, 70, '转换完成，正在上传...', 'processing');
+
+      const [fileUrl, pdfUrl, cover] = await Promise.all([
+        uploadFile(safeName, buffer, fileType),
+        uploadFile(`pdf/${pdfName}`, pdfBuffer, 'application/pdf'),
+        coverBuffer ? uploadFile(`cover/${coverName}`, coverBuffer, 'image/jpeg') : Promise.resolve(null),
+      ]);
+
+      url = fileUrl;
+      pdf = pdfUrl;
+      coverUrl = cover;
+
+      taskLogger.info(`Word 处理完成 | PDF: ${pdfUrl ? '成功' : '无'} | Cover: ${coverUrl ? '成功' : '无'}`);
+    } else {
+      taskLogger.info('非 Word 文件，直接上传...');
+      await updateDocumentProgress(documentId, fileName, 70, '正在上传文件...', 'processing');
+
+      const safeName = sanitizeFileName(fileName);
+      url = await uploadFile(safeName, buffer, fileType);
+
+      taskLogger.info(`文件上传完成，URL: ${url}`);
+    }
+
+    // 5. 更新数据库最终状态
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { status: 'COMPLETED', url, pdf, cover: coverUrl },
+    });
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    taskLogger.info(`✅ 任务处理成功！总耗时 ${duration}s`);
+
+  } catch (error: any) {
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    taskLogger.error(`❌ 任务处理失败，耗时 ${duration}s | 错误: ${error.message}`);
+    await handleError(documentId, fileName, error, taskLogger, '任务处理异常');
+    throw error;   // 让 BullMQ 标记为 failed
+  } finally {
+    if (tempFileFound) {
+      try {
+        deleteTempFile(tempFilePath);
+        taskLogger.info('临时文件清理完成');
+      } catch (e) {
+        taskLogger.warn(`临时文件清理失败: ${e}`);
+      }
+    }
+
+    try {
+      await updateDocumentProgress(documentId, fileName, 100,
+        documentCreated ? '任务处理完成' : '任务失败',
+        documentCreated ? 'completed' : 'failed'
+      );
+    } catch (e) {
+      taskLogger.warn(`最终进度更新失败: ${e}`);
+    }
+  }
+}
+
+// ==================== Worker 启动 ====================
+let workerInstance: Worker | null = null;
+
+export function startDocumentProcessor(logger: Pino.Logger): void {
   if (global.docWorker) {
     logger.info('Document processor already started');
     return;
   }
-  // 创建 BullMQ Worker
-  worker = new Worker('document-processing', processor,
-    {
-      connection: getRedisConfig(),
-      concurrency: 1
+
+  const workerOptions: WorkerOptions = {
+    connection: getRedisConfig(),
+    concurrency: 3,           // ← 改成 2~4 （推荐从 3 开始）
+    lockDuration: 600_000,    // 10 分钟（docx 转换可能比较慢）
+    stalledInterval: 30_000,  // 每 30 秒检查 stalled job
+    maxStalledCount: 2,       // 最多重试 stalled 2 次
+  };
+
+  workerInstance = new Worker<DocumentJobData>(
+    'document-processing',
+    (job) => processor(job, logger),
+    workerOptions
+  );
+
+  // 事件监听（统一处理）
+  const events = ['active', 'completed', 'failed', 'progress', 'error', 'stalled'] as const;
+  events.forEach((event) => {
+    workerInstance!.on(event, (Job: Job, error?: Error) => {
+      try {
+        if (event === 'error') {
+          logger.error(`Worker error: ${Job}`);
+        } else if (event === 'failed') {
+          logger.error(`Job ${Job?.id || 'unknown'} failed: ${error?.message}`);
+        } else {
+          logger.info(`Job ${Job?.id} ${event}`);
+        }
+      } catch (e) {
+        logger.error(`Event handler error (${event}): ${e}`);
+      }
     });
-  logger.info({ getRedisConfig: getRedisConfig() }, 'redis config');
-  worker.on('progress', (job) => {
-    logger.info(`Job ${job.id} progress: ${job.progress}`);
-  });
-  worker.on('active', (job) => {
-    logger.info(`Job ${job.id} is active`);
-  });
-  // 监听事件
-  worker.on('completed', (job) => {
-    logger.info(`Job ${job.id} completed`);
   });
 
-  worker.on('failed', (job, error) => {
-    logger.info(`Job ${job?.id || 'unknown'} failed with error: ${error.message}`);
-  });
-
-  worker.on('error', (error) => {
-    console.error('Worker error:', error);
-  });
-  // 3. 将实例存入全局
-  global.docWorker = worker;
+  global.docWorker = workerInstance;
   logger.info(`PID: ${process.pid} Document processor started with BullMQ`);
 }
 
-// 导出 workerexport { worker };
+// 导出（可选）
+export { workerInstance as worker };
+
+// ==================== Graceful Shutdown 示例（推荐在进程退出时调用） ====================
+export async function shutdownDocumentProcessor(logger: Pino.Logger): Promise<void> {
+  if (global.docWorker) {
+    logger.info('Shutting down document worker...');
+    await global.docWorker.close();
+    global.docWorker = undefined;
+    logger.info('Document worker closed');
+  }
+}

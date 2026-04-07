@@ -109,6 +109,8 @@ export async function GET(
           select: {
             id: true,
             name: true,
+            url: true,
+            content: true,
             status: true,
             createdAt: true,
           },
