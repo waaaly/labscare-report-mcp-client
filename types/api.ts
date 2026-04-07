@@ -19,6 +19,8 @@ export interface UpdateLabRequest {
 export interface CreateProjectRequest {
   name: string;
   description?: string;
+  limsPid: string;
+  caseId?: string;
 }
 
 export interface UpdateKnowledgeBaseRequest {

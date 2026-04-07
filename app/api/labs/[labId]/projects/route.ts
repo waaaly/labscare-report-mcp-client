@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import type { CreateProjectRequest } from '@/types/api';
 
 export async function GET(
@@ -37,13 +37,15 @@ export async function POST(
   try {
     const { labId } = await context.params;
     const body: CreateProjectRequest = await request.json();
-    const { name, description } = body;
+    const { name, description, limsPid, caseId } = body;
 
     const project = await prisma.project.create({
       data: {
         labId,
         name,
         description,
+        limsPid,
+        caseId,
       },
     });
 

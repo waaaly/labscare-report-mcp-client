@@ -120,4 +120,23 @@ systemPrompt: `
 // `
 // });
 // ===== 确认工具是否加载 =====
-export const agent = await initializeAgent();
+let agentInstance: any = null;
+
+export async function getAgent(): Promise<any> {
+  if (!agentInstance) {
+    agentInstance = await initializeAgent();
+  }
+  return agentInstance;
+}
+
+// 为了保持向后兼容，仍然导出agent变量，但它会在首次访问时初始化
+let agentPromise: Promise<any> | null = null;
+export const agent: any = new Proxy({}, {
+  get: async function(_, prop) {
+    if (!agentPromise) {
+      agentPromise = getAgent();
+    }
+    const actualAgent = await agentPromise;
+    return actualAgent[prop];
+  }
+});

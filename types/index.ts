@@ -18,6 +18,8 @@ export interface Project {
   id: string;
   labId: string;
   name: string;
+  limsPid:string;
+  caseId?:string;
   description?: string;
   status: string;
   documents?: Document[];
