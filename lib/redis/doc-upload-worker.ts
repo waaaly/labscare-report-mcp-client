@@ -136,8 +136,9 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
 
     // 4. 处理文件
     const isDocFile = fileType.includes('word') || fileType.includes('docx') || fileType.includes('msword');
+    const isTextFile = fileType.includes('text/') || fileType.includes('application/json') || fileType.includes('application/xml') || fileType.includes('text/markdown') || fileType.includes('text/csv');
 
-    let url = '', pdf: string | null = null, coverUrl: string | null = null;
+    let url = '', pdf: string | null = null, coverUrl: string | null = null, content: string | undefined;
 
     if (isDocFile) {
       taskLogger.info('检测到 Word 文档，开始转换...');
@@ -169,13 +170,28 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
       const safeName = sanitizeFileName(fileName);
       url = await uploadFile(safeName, buffer, fileType);
 
+      // 处理文本类型文件，读取内容
+      if (isTextFile) {
+        try {
+          content = buffer.toString('utf8');
+          taskLogger.info(`文本文件内容读取成功，长度: ${content.length} 字符`);
+        } catch (error) {
+          taskLogger.warn(`文本文件内容读取失败: ${error}`);
+          content = undefined;
+        }
+      }
+
       taskLogger.info(`文件上传完成，URL: ${url}`);
     }
 
     // 5. 更新数据库最终状态
+    const updateData: any = { status: 'COMPLETED', url, pdf, cover: coverUrl };
+    if (content !== undefined) {
+      updateData.content = content;
+    }
     await prisma.document.update({
       where: { id: documentId },
-      data: { status: 'COMPLETED', url, pdf, cover: coverUrl },
+      data: updateData,
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);

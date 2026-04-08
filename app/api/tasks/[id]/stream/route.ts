@@ -11,6 +11,7 @@ import Redis from 'ioredis';
 import { logger } from '@/lib/logger';
 import { getRedisConfig } from '@/lib/redis/client';
 import prisma from '@/lib/prisma';
+import { STREAM_KEY_PREFIX } from '@/lib/queue/stream-publisher';
 
 // ===== GET /api/tasks/[id]/stream =====
 
@@ -19,141 +20,103 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const streamKey = `${STREAM_KEY_PREFIX}${id}`;
 
-  // 创建 SSE 响应
   const encoder = new TextEncoder();
+
   const stream = new ReadableStream({
     async start(controller) {
-      const redis = new Redis(getRedisConfig());
-      const channel = `task:${id}:logs`;
-
       let closed = false;
+      let lastId = '0';
+      let redis: Redis | null = null;
 
       const sendEvent = (event: string, data: any) => {
-        if (closed) return;
-        const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(message));
+        if (closed || !controller.desiredSize) return; // 增加防护
+        try {
+          const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(message));
+        } catch (_) {
+          // 客户端已断开
+        }
       };
 
-      // 发送连接成功消息
-      sendEvent('connected', { taskId: id, timestamp: Date.now() });
-
-      // 订阅 Redis 频道
-      const subscriber = new Redis(getRedisConfig());
-      subscriber.subscribe(channel, (err) => {
-        if (err) {
-          logger.error({ error: err, taskId: id }, '[Task Stream API] 订阅失败');
-          sendEvent('error', { message: 'Failed to subscribe to logs' });
-        }
-      });
-
-      // 监听日志消息
-      subscriber.on('message', async (channelName, message) => {
-        if (channelName === channel) {
-          try {
-            const logData = JSON.parse(message);
-            sendEvent('log', { message: logData });
-
-            // 持久化日志到 PostgreSQL
-            try {
-              await prisma.taskLog.create({
-                data: {
-                  taskId: id,
-                  type: logData.type || 'info',
-                  content: logData.content || JSON.stringify(logData),
-                  metadata: logData,
-                },
-              });
-            } catch (dbError) {
-              logger.error({ error: dbError, taskId: id }, '[Task Stream API] 持久化日志失败');
-            }
-          } catch (e) {
-            logger.error({ error: e, message }, '[Task Stream API] 解析日志失败');
-          }
-        }
-      });
-
-      // 定期检查任务状态
-      const queue = new Queue('report', { connection: getRedisConfig() });
-      const statusInterval = setInterval(async () => {
-        if (closed) return;
-
-        try {
-          const job = await queue.getJob(id);
-          if (!job) {
-            sendEvent('status', { status: 'not_found' });
-            cleanup();
-            return;
-          }
-
-          const state = await job.getState();
-          const progress = job.progress;
-
-          // 更新 PostgreSQL 中的任务状态和进度
-          try {
-            await prisma.task.update({
-              where: { id },
-              data: {
-                status: state,
-                progress: typeof progress === 'number' ? progress : 0,
-              },
-            });
-          } catch (dbError) {
-            logger.error({ error: dbError, taskId: id }, '[Task Stream API] 更新任务状态失败');
-          }
-
-          sendEvent('status', {
-            status: state,
-            progress: typeof progress === 'number' ? progress : 0,
-          });
-
-          // 如果任务完成或失败，发送最终状态并关闭
-          if (state === 'completed' || state === 'failed') {
-            // 更新任务完成时间和结果
-            try {
-              await prisma.task.update({
-                where: { id },
-                data: {
-                  status: state,
-                  completedAt: new Date(),
-                  duration: job.processedOn && job.finishedOn ? job.finishedOn - job.processedOn : undefined,
-                  result: job.returnvalue,
-                  error: job.failedReason,
-                },
-              });
-            } catch (dbError) {
-              logger.error({ error: dbError, taskId: id }, '[Task Stream API] 更新任务完成状态失败');
-            }
-
-            sendEvent('status', { status: state, finished: true });
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 等待最后一条消息
-            cleanup();
-          }
-        } catch (e) {
-          logger.error({ error: e, taskId: id }, '[Task Stream API] 检查任务状态失败');
-        }
-      }, 1000);
-
-      // 清理函数
       const cleanup = async () => {
-        if (closed) return;
+        if (closed) return;           // ← 关键防护：防止重复执行
         closed = true;
 
-        clearInterval(statusInterval);
-        await subscriber.quit();
-        await redis.quit();
-
-        try {
-          await queue.close();
-        } catch (e) {
-          // 忽略关闭错误
+        if (redis) {
+          try {
+            await redis.quit();
+          } catch (_) {}
+          redis = null;
         }
 
-        controller.close();
+        try {
+          if (controller.desiredSize !== null) {   // 只有在未关闭时才 close
+            controller.close();
+          }
+        } catch (_) {
+          // 忽略已关闭错误
+        }
       };
 
-      // 监听客户端断开连接
-      request.signal.addEventListener('abort', cleanup);
+      // 发送连接消息
+      sendEvent('connected', { taskId: id, timestamp: Date.now() });
+
+      redis = new Redis(getRedisConfig());
+
+      // 监听客户端主动断开
+      request.signal.addEventListener('abort', cleanup, { once: true });
+
+      try {
+        while (!closed) {
+          const result = await redis.xread(
+            'COUNT', 10,
+            'BLOCK', 5000,
+            'STREAMS',
+            streamKey,
+            lastId
+          );
+
+          if (!result || result.length === 0) continue;
+
+          for (const [_, messages] of result) {
+            for (const [messageId, fields] of messages as [string, string[]][]) {
+              try {
+                const fieldMap = new Map<string, string>();
+                for (let i = 0; i < fields.length; i += 2) {
+                  fieldMap.set(fields[i], fields[i + 1]);
+                }
+
+                const type = fieldMap.get('type') || 'message';
+                const dataStr = fieldMap.get('data') || '{}';
+                const data = JSON.parse(dataStr);
+
+                sendEvent(type, data);
+
+                lastId = messageId;
+
+                // 收到完成信号后优雅关闭
+                if (type === 'completed' || type === 'failed' || data?.finished === true) {
+                  await new Promise(r => setTimeout(r, 600)); // 短暂缓冲
+                  await cleanup();
+                  return;
+                }
+              } catch (parseErr) {
+                logger.error({ error: parseErr, taskId: id }, '[Stream API] 解析消息失败');
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        // 忽略客户端断开导致的正常错误
+        if (error.name !== 'AbortError' && !closed) {
+          logger.error({ error, taskId: id }, '[Stream API] 读取 Stream 异常');
+          sendEvent('error', { message: 'Stream read error' });
+        }
+      } finally {
+        await cleanup();
+      }
     },
   });
 

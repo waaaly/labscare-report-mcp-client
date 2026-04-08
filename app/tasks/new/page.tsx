@@ -72,19 +72,12 @@ interface Report {
   createdAt: string;
   project: Project;
   documents: Document[];
-  task?: Task;
-}
-
-interface ReportTemplate {
-  id: string;
-  name: string;
-  description: string;
+  tasks?: Task[];
 }
 
 export default function NewBatchTaskPage() {
   const router = useRouter();
   const { currentLab } = useLabStore();
-  const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
@@ -162,23 +155,6 @@ export default function NewBatchTaskPage() {
     fetchReports();
   }, []);
 
-  // Sample materials for demo
-  useEffect(() => {
-    const sampleMaterials: Material[] = [
-      { id: '1', name: 'blood_test_report.pdf', type: 'pdf', size: 1024 * 500, description: '血液常规检测报告' },
-      { id: '2', name: 'patient_info.json', type: 'json', size: 1024 * 2, description: '患者基本信息' },
-      { id: '3', name: 'report_template_desc.txt', type: 'markdown', size: 1024, description: '报告模板描述文件' },
-      { id: '4', name: 'lab_result_sample.pdf', type: 'pdf', size: 1024 * 800, description: '实验室检测结果示例' },
-      { id: '5', name: 'result_schema.json', type: 'json', size: 1024 * 3, description: '结果数据结构定义' },
-    ];
-    setMaterials(sampleMaterials);
-  }, []);
-
-  const filteredMaterials = materials.filter(m =>
-    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (m.description && m.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
   const handleToggleMaterial = (materialId: string) => {
     const newSelected = new Set(selectedMaterials);
     if (newSelected.has(materialId)) {
@@ -187,14 +163,6 @@ export default function NewBatchTaskPage() {
       newSelected.add(materialId);
     }
     setSelectedMaterials(newSelected);
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedMaterials(new Set(filteredMaterials.map(m => m.id)));
-    } else {
-      setSelectedMaterials(new Set());
-    }
   };
 
   const handleToggleReport = (reportId: string) => {
@@ -256,15 +224,6 @@ export default function NewBatchTaskPage() {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  const getSelectedMaterials = () => materials.filter(m => selectedMaterials.has(m.id));
-  const getTotalSize = () => {
-    return getSelectedMaterials().reduce((acc, m) => acc + (m.size || 0), 0);
-  };
-  const getEstimatedTime = () => {
-    const count = selectedMaterials.size;
-    return count * 2 + ' 分钟';
   };
 
   const handleUpload = async () => {

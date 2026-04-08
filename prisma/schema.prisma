@@ -45,8 +45,8 @@ model Project {
   caseId      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  documents   Document[]
   reports     Report[]
+  documents   Document[]
   schemas     Schema[]
   scripts     Script[]
   
@@ -63,7 +63,8 @@ model Report {
   
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   documents   Document[]
-  task        Task?
+  tasks       Task[]
+  scripts     Script[]
 }
 
 model Document {
@@ -74,7 +75,7 @@ model Document {
   type        String  
   url         String
   status      String
-  size        BigInt?
+  size        Int?
   description String?
   storagePath String?  @map("storage_path")
   content     Json?
@@ -85,6 +86,11 @@ model Document {
   
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   report      Report?  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+  @@index([reportId])
+  @@index([projectId, type])
+  @@index([reportId, type])
 }
 
 model Schema {
@@ -99,33 +105,23 @@ model Schema {
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
-model Script {
-  id          String   @id @default(cuid())
-  projectId   String
-  name        String
-  code        String
-  status      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
+
 
 model Task {
   id                     String         @id @default(cuid())
   labId                  String         @map("lab_id")
   name                   String
-  reportId               String         @unique @map("report_id")
+  reportId               String         @map("report_id")
   reportType             String?        @map("report_type")
   additionalInstructions String?        @map("additional_instructions")
   status                 String
   progress               Int            @default(0)
-  temperature            Decimal?       @default(0.7)
+  temperature            Float?         @default(0.7)
   maxTokens              Int?           @default(4000) @map("max_tokens")
   model                  String?        @default("claude-sonnet-4.5")
   result                 Json?
   error                  String?
-  duration               BigInt?
+  duration               Int?
   createdAt              DateTime       @default(now())
   completedAt            DateTime?      @map("completed_at")
   updatedAt              DateTime       @updatedAt
@@ -139,8 +135,28 @@ model Task {
   @@index([status])
   @@index([createdAt])
   @@index([reportType])
+  @@index([reportId])
+  @@index([labId, status])
+  @@index([reportId, createdAt])
+  @@index([status, createdAt])
 }
-
+model Script {
+  id          String   @id @default(cuid())
+  projectId   String
+  reportId    String
+  name        String
+  code        String
+  dataSource  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+  @@index([reportId])
+  @@unique([reportId, name])
+}
 model TaskLog {
   id        String   @id @default(cuid())
   taskId    String   @map("task_id")
@@ -154,4 +170,6 @@ model TaskLog {
   @@index([taskId])
   @@index([timestamp])
   @@index([type])
+  @@index([taskId, timestamp])
+  @@index([taskId, type, timestamp])
 }

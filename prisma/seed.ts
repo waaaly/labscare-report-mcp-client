@@ -59,6 +59,12 @@ async function main() {
               variables: ['fields'],
             },
           },
+          knowledgeBase: {
+            'bloodTestGuide': {
+              title: 'Blood Test Interpretation Guide',
+              content: 'Reference guide for blood test results',
+            },
+          },
         },
       });
       console.log('✅ Created lab:', lab.name);
@@ -84,6 +90,7 @@ async function main() {
           limsPid: '3301322',
           name: 'Blood Test Analysis',
           description: 'Automated extraction of blood test results from PDF reports',
+          caseId: 'CASE-2024-001',
         },
       });
       console.log('✅ Created project:', project.name);
@@ -95,14 +102,14 @@ async function main() {
 
   // Create sample reports
   const reports = await Promise.all([
-    await prisma.report.create({
+    prisma.report.create({
       data: {
         projectId: project.id,
         name: 'Patient Blood Test Report',
         description: 'Comprehensive blood test results for patient',
       },
     }),
-    await prisma.report.create({
+    prisma.report.create({
       data: {
         projectId: project.id,
         name: 'Annual Health Check Report',
@@ -115,7 +122,7 @@ async function main() {
 
   // Create sample documents
   const documents = await Promise.all([
-    await prisma.document.create({
+    prisma.document.create({
       data: {
         projectId: project.id,
         reportId: reports[0].id,
@@ -130,7 +137,7 @@ async function main() {
         cover: '/uploads/blood_test_report_cover.jpg',
       },
     }),
-    await prisma.document.create({
+    prisma.document.create({
       data: {
         projectId: project.id,
         reportId: reports[0].id,
@@ -149,7 +156,7 @@ async function main() {
         },
       },
     }),
-    await prisma.document.create({
+    prisma.document.create({
       data: {
         projectId: project.id,
         reportId: reports[1].id,
@@ -185,11 +192,14 @@ async function main() {
 
   console.log('✅ Created schema:', schema.name);
 
-  const script = await prisma.script.create({
-    data: {
-      projectId: project.id,
-      name: 'Blood Test Extraction Script',
-      code: `// Blood Test Extraction Script
+  // Create scripts with dataSource field
+  const scripts = await Promise.all([
+    prisma.script.create({
+      data: {
+        projectId: project.id,
+        reportId: reports[0].id,
+        name: 'Blood Test Extraction Script',
+        code: `// Blood Test Extraction Script
 function extractData(document) {
   const patientId = document.getCellValue('A2');
   const sampleDate = document.getCellValue('B2');
@@ -203,16 +213,44 @@ function extractData(document) {
 }
 
 return extractData(document);`,
-      status: 'DRAFT',
-    },
-  });
+        dataSource: {
+          type: 'pdf',
+          source: 'blood_test_report.pdf',
+          extractionRules: ['patientId', 'sampleDate', 'testResult'],
+        },
+      },
+    }),
+    prisma.script.create({
+      data: {
+        projectId: project.id,
+        reportId: reports[1].id,
+        name: 'Annual Health Check Extraction',
+        code: `// Annual Health Check Extraction Script
+function extractHealthData(document) {
+  const checkDate = document.getCellValue('A1');
+  const overallStatus = document.getCellValue('B1');
+  
+  return {
+    checkDate,
+    overallStatus,
+  };
+}
 
-  console.log('✅ Created script:', script.name);
+return extractHealthData(document);`,
+        dataSource: {
+          type: 'pdf',
+          source: 'annual_health_check.pdf',
+          extractionRules: ['checkDate', 'overallStatus'],
+        },
+      },
+    }),
+  ]);
 
-  // Create sample tasks (one per report, since reportId is unique)
+  console.log('✅ Created scripts:', scripts.length);
+
+  // Create sample tasks
   const tasks = await Promise.all(
     reports.map(async (report, index) => {
-      const taskId = `task-${String(index + 1).padStart(3, '0')}`;
       const existingTask = await prisma.task.findFirst({
         where: { reportId: report.id },
       });
@@ -221,18 +259,22 @@ return extractData(document);`,
         console.log('✅ Task already exists for report:', report.name);
         return existingTask;
       } else {
-        const taskData = {
+        const taskData: any = {
           labId: lab.id,
           name: index === 0 ? '2024年血液检测报告批量分析' : '综合检测报告生成任务',
           reportId: report.id,
           reportType: index === 0 ? 'blood-test' : 'comprehensive',
           status: index === 0 ? 'completed' : 'running',
           progress: index === 0 ? 100 : 67,
+          temperature: 0.7,
+          maxTokens: 4000,
+          model: 'claude-sonnet-4.5',
         };
 
         // Add additional fields for completed task
         if (index === 0) {
           Object.assign(taskData, {
+            additionalInstructions: '请重点分析异常指标',
             result: {
               summary: '血液检测报告分析完成',
               totalFiles: 7,
@@ -241,6 +283,10 @@ return extractData(document);`,
             },
             duration: 1800000, // 30 minutes
             completedAt: new Date(Date.now() - 1800000),
+          });
+        } else {
+          Object.assign(taskData, {
+            additionalInstructions: '生成详细的健康建议',
           });
         }
 
@@ -258,7 +304,6 @@ return extractData(document);`,
   // Create task logs for the running task
   const runningTask = tasks.find(task => task.status === 'running');
   if (runningTask) {
-    // Check if task logs already exist
     const existingLogs = await prisma.taskLog.findMany({
       where: { taskId: runningTask.id },
     });
@@ -295,6 +340,24 @@ return extractData(document);`,
     } else {
       console.log('✅ Task logs already exist');
     }
+  }
+
+  // Create a sample user
+  const existingUser = await prisma.user.findFirst({
+    where: { username: 'admin' },
+  });
+
+  if (!existingUser) {
+    await prisma.user.create({
+      data: {
+        username: 'admin',
+        email: 'admin@labscare.com',
+        passwordHash: '$2a$10$YourHashedPasswordHere', // Placeholder hash
+      },
+    });
+    console.log('✅ Created user: admin');
+  } else {
+    console.log('✅ User already exists: admin');
   }
 
   console.log('🎉 Seeding completed successfully!');

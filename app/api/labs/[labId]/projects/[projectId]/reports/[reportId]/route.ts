@@ -64,7 +64,7 @@ export async function GET(
             createdAt: true,
           },
         },
-        task: {
+        tasks: {
           select: {
             id: true,
             name: true,

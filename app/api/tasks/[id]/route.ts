@@ -39,7 +39,12 @@ export async function GET(
     const dbTask = await prisma.task.findUnique({
       where: { id },
       include: {
-        materials: true,
+        report: {
+          include: {
+            documents: true,
+          },
+        },
+        logs: true,
       },
     });
 
@@ -56,16 +61,16 @@ export async function GET(
       name: dbTask.name,
       status: dbTask.status as TaskDetailResponse['status'],
       progress: dbTask.progress,
-      materials: dbTask.materials.map(material => ({
-        id: material.id,
-        name: material.name,
-        type: material.type,
-        size: material.size,
-        description: material.description,
-        url: material.url,
-        storagePath: material.storagePath,
-        content: material.content,
-      })),
+      materials: dbTask.report?.documents.map(document => ({
+        id: document.id,
+        name: document.name,
+        type: document.type,
+        size: document.size,
+        description: document.description,
+        url: document.url,
+        storagePath: document.storagePath,
+        content: document.content,
+      })) || [],
       createdAt: dbTask.createdAt.getTime(),
       completedAt: dbTask.completedAt?.getTime(),
       duration: dbTask.duration ? Number(dbTask.duration) : undefined,

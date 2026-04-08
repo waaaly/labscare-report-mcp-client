@@ -40,7 +40,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Types
 type TaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-type MessageType = 'thought' | 'tool' | 'progress' | 'error' | 'info';
+type MessageType = 'thought' | 'tool' | 'progress' | 'error' | 'info' | 'content';
 
 interface Message {
   id: string;
@@ -145,42 +145,269 @@ export default function TaskDetailPage() {
     if (typeof window === 'undefined') return;
 
     try {
+      // 可选：支持断线重连时从上次 lastId 继续读取（后面可扩展）
       const eventSource = new EventSource(`/api/tasks/${taskId}/stream`);
-      setIsConnected(true);
 
-      eventSource.onmessage = (event) => {
+      setIsConnected(true);
+      console.log(`[SSE] 已连接到任务流: ${taskId}`);
+
+      eventSource.onopen = () => {
+        console.log(`[SSE] 连接已建立`);
+      };
+
+      // ==================== 核心修改部分 ====================
+      // 监听所有事件，包括带 event 字段的消息
+      eventSource.addEventListener('message', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received message event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse message event:', e, event.data);
+        }
+      });
+
+      // 监听带特定 event 字段的消息
+      eventSource.addEventListener('connected', (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'log') {
-            // 转换日志格式
-            const logMessage = {
+          console.log('Connected event:', data);
+        } catch (e) {
+          console.error('Failed to parse connected event:', e, event.data);
+        }
+      });
+
+      // 监听所有其他事件类型
+      eventSource.addEventListener('thought', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received thought event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse thought event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('reasoning', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received reasoning event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse reasoning event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('content', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received content event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse content event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('tool_call', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received tool_call event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse tool_call event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('status', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received status event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse status event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('metrics', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received metrics event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse metrics event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('completed', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received completed event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse completed event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('finished', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received finished event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse finished event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('failed', (event) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received failed event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse failed event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('error', (event: MessageEvent) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received error event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse error event:', e, event.data);
+        }
+      });
+
+      eventSource.addEventListener('progress', (event: MessageEvent) => {
+        try {
+          const chunk = JSON.parse(event.data);
+          console.log('Received progress event:', chunk);
+          processChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse progress event:', e, event.data);
+        }
+      });
+
+      // 处理消息的通用函数
+      const processChunk = (chunk: any) => {
+        switch (chunk.type) {
+          // 思考过程 / 推理内容
+          case 'thought':
+          case 'reasoning':
+            setLogs(prev => [...prev, {
               id: crypto.randomUUID(),
               timestamp: new Date(),
-              type: data.message.type || 'info',
-              content: data.message.content || JSON.stringify(data.message),
-              metadata: data.message.metadata,
-            };
-            setLogs(prev => [...prev, logMessage]);
-          } else if (data.type === 'progress') {
-            setTask(prev => prev ? { ...prev, progress: data.progress } : null);
-          } else if (data.type === 'status') {
-            setTask(prev => prev ? { ...prev, status: data.status === 'waiting' ? 'running' : data.status } : null);
-          }
-        } catch (e) {
-          console.error('Failed to parse SSE message:', e);
+              type: 'thought',
+              content: chunk.text || chunk.message || '',
+              metadata: { node: chunk.node },
+            }]);
+            break;
+
+          // 最终输出内容（通常是生成的脚本、报告等）
+          case 'content':
+            setLogs(prev => [...prev, {
+              id: crypto.randomUUID(),
+              timestamp: new Date(),
+              type: 'content',
+              content: chunk.text || '',
+              metadata: chunk,
+            }]);
+            break;
+
+          case 'tool_call':
+            // 工具调用
+            setLogs(prev => [...prev, {
+              id: crypto.randomUUID(),
+              timestamp: new Date(),
+              type: 'tool',
+              content: chunk.message || `调用工具: ${chunk.tool}`,
+              metadata: { tool: chunk.tool },
+            }]);
+            break;
+
+          case 'status':
+            // 状态更新
+            setTask(prev => prev ? {
+              ...prev,
+              status: chunk.status || prev.status
+            } : null);
+            break;
+
+          case 'progress':
+            // 进度更新
+            setTask(prev => prev ? {
+              ...prev,
+              progress: chunk.progress || prev.progress
+            } : null);
+            setLogs(prev => [...prev, {
+              id: crypto.randomUUID(),
+              timestamp: new Date(),
+              type: 'progress',
+              content: `进度更新: ${chunk.progress}%`,
+              metadata: { progress: chunk.progress },
+            }]);
+            break;
+
+          case 'metrics':
+            // 性能指标（首次 token 时间、总耗时等）
+            if (chunk.total_duration) {
+              setTask(prev => prev ? { ...prev, duration: chunk.total_duration } : null);
+            }
+            break;
+
+          case 'completed':
+          case 'finished':
+            setTask(prev => prev ? { ...prev, status: 'completed', progress: 100 } : null);
+            console.log(`[SSE] 任务已完成`);
+            // 可选择在这里关闭连接
+            // eventSource.close();
+            break;
+
+          case 'failed':
+            setTask(prev => prev ? { ...prev, status: 'failed' } : null);
+            console.error(`[SSE] 任务失败:`, chunk);
+            break;
+
+          case 'error':
+            console.error(`[SSE] 服务端错误:`, chunk.message);
+            break;
+
+          default:
+            // 兜底处理未知类型
+            console.warn(`[SSE] 未知消息类型:`, chunk.type, chunk);
+            setLogs(prev => [...prev, {
+              id: crypto.randomUUID(),
+              timestamp: new Date(),
+              type: 'info',
+              content: JSON.stringify(chunk),
+            }]);
         }
       };
 
-      eventSource.onerror = () => {
+      // ==================== 错误处理 ====================
+      eventSource.onerror = (err) => {
+        console.warn(`[SSE] 连接出错`, err);
         setIsConnected(false);
-        eventSource.close();
+
+        // 可选：自动重连逻辑（推荐实现）
+        setTimeout(() => {
+          if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+            console.log(`[SSE] 尝试重连...`);
+            connectToStream();   // 重新调用连接函数
+          }
+        }, 2000);
       };
 
+      // 返回清理函数
       return () => {
+        console.log(`[SSE] 正在关闭连接`);
         eventSource.close();
+        setIsConnected(false);
       };
+
     } catch (error) {
-      console.error('Failed to connect to stream:', error);
+      console.error('Failed to create EventSource:', error);
+      setIsConnected(false);
     }
   };
 

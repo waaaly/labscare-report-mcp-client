@@ -99,4 +99,18 @@ export async function getFileUrl(fileName: string): Promise<string> {
   return `${process.env.MINIO_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
 }
 
+/** 从 MinIO 获取 JSON 文件内容 */
+export async function fetchJsonContent(jsonUrl: string): Promise<any | null> {
+  const minioHost = getMinioPublicHost();
+  const fullUrl = jsonUrl.startsWith('http') ? jsonUrl : `${minioHost}${jsonUrl}`;
+
+  try {
+    const response = await fetch(fullUrl);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 export { minioClient };
