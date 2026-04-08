@@ -209,105 +209,43 @@ return extractData(document);`,
 
   console.log('✅ Created script:', script.name);
 
-  // Create sample report templates
-  const templateData = [
-    { id: 'blood-test', name: '血液检测报告', description: '血液生化指标分析报告' },
-    { id: 'urinalysis', name: '尿常规报告', description: '尿液分析指标报告' },
-    { id: 'comprehensive', name: '综合检测报告', description: '多项目综合分析报告' },
-    { id: 'custom', name: '自定义报告', description: '自定义格式的分析报告' },
-  ];
-
-  const reportTemplates = await Promise.all(
-    templateData.map(async (template) => {
-      const existingTemplate = await prisma.reportTemplate.findFirst({
-        where: { id: template.id },
-      });
-
-      if (existingTemplate) {
-        console.log('✅ Report template already exists:', existingTemplate.name);
-        return existingTemplate;
-      } else {
-        const newTemplate = await prisma.reportTemplate.create({
-          data: template,
-        });
-        console.log('✅ Created report template:', newTemplate.name);
-        return newTemplate;
-      }
-    })
-  );
-
-  console.log('✅ Processed report templates:', reportTemplates.length);
-
-  // Create sample user
-  let user;
-  try {
-    const existingUser = await prisma.user.findFirst({
-      where: { id: 'user-001' },
-    });
-
-    if (existingUser) {
-      user = existingUser;
-      console.log('✅ User already exists:', user.username);
-    } else {
-      user = await prisma.user.create({
-        data: {
-          id: 'user-001',
-          username: 'demo',
-          email: 'demo@example.com',
-          passwordHash: 'demo123',
-        },
-      });
-      console.log('✅ Created user:', user.username);
-    }
-  } catch (error) {
-    console.error('❌ Failed to create user:', error);
-    process.exit(1);
-  }
-
-  // Create sample tasks
-  const taskData = [
-    {
-      id: 'task-001',
-      userId: user.id,
-      labId: lab.id,
-      name: '2024年血液检测报告批量分析',
-      reportId: reports[0].id,
-      reportType: 'blood-test',
-      status: 'completed',
-      progress: 100,
-      result: {
-        summary: '血液检测报告分析完成',
-        totalFiles: 7,
-        successful: 7,
-        failed: 0,
-      },
-      duration: 1800000, // 30 minutes
-      completedAt: new Date(Date.now() - 1800000),
-    },
-    {
-      id: 'task-002',
-      userId: user.id,
-      labId: lab.id,
-      name: '综合检测报告生成任务',
-      reportId: reports[1].id,
-      reportType: 'comprehensive',
-      status: 'running',
-      progress: 67,
-    },
-  ];
-
+  // Create sample tasks (one per report, since reportId is unique)
   const tasks = await Promise.all(
-    taskData.map(async (task) => {
+    reports.map(async (report, index) => {
+      const taskId = `task-${String(index + 1).padStart(3, '0')}`;
       const existingTask = await prisma.task.findFirst({
-        where: { id: task.id },
+        where: { reportId: report.id },
       });
 
       if (existingTask) {
-        console.log('✅ Task already exists:', existingTask.name);
+        console.log('✅ Task already exists for report:', report.name);
         return existingTask;
       } else {
+        const taskData = {
+          labId: lab.id,
+          name: index === 0 ? '2024年血液检测报告批量分析' : '综合检测报告生成任务',
+          reportId: report.id,
+          reportType: index === 0 ? 'blood-test' : 'comprehensive',
+          status: index === 0 ? 'completed' : 'running',
+          progress: index === 0 ? 100 : 67,
+        };
+
+        // Add additional fields for completed task
+        if (index === 0) {
+          Object.assign(taskData, {
+            result: {
+              summary: '血液检测报告分析完成',
+              totalFiles: 7,
+              successful: 7,
+              failed: 0,
+            },
+            duration: 1800000, // 30 minutes
+            completedAt: new Date(Date.now() - 1800000),
+          });
+        }
+
         const newTask = await prisma.task.create({
-          data: task,
+          data: taskData,
         });
         console.log('✅ Created task:', newTask.name);
         return newTask;
@@ -318,7 +256,7 @@ return extractData(document);`,
   console.log('✅ Processed tasks:', tasks.length);
 
   // Create task logs for the running task
-  const runningTask = tasks.find(task => task.id === 'task-002');
+  const runningTask = tasks.find(task => task.status === 'running');
   if (runningTask) {
     // Check if task logs already exist
     const existingLogs = await prisma.taskLog.findMany({

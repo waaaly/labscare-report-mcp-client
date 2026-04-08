@@ -34,6 +34,7 @@ export interface Document {
   projectId: string;
   name: string;
   type: string;
+  size?: number;
   url?: string;
   cover?:string;
   pdf?:string;

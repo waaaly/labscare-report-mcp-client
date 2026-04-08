@@ -3,13 +3,12 @@
  *
  * 功能：
  * 1. 从 BullMQ 队列中获取任务
- * 2. 创建 Agent 实例
- * 3. 执行 Agent 并发布流式结果到 Redis Stream
- * 4. 错误处理和重试
+ * 2. 执行模拟或真实 Agent
+ * 3. 发布流式结果到 Redis Stream
+ * 4. 完善错误处理，防止进程崩溃
  */
 
 import { Worker, Job, WorkerOptions } from "bullmq";
-import { createAgentInstance } from "../llm/agent-factory";
 import {
   publishStreamChunk,
   markStreamComplete,
@@ -41,9 +40,21 @@ export interface TaskProcessResult {
   tokensUsed?: number;
 }
 
-// 全局单例（防止多实例启动）
+// 全局单例
 declare global {
   var taskWorker: Worker | undefined;
+}
+
+// ==================== 全局防护（防止未知错误导致进程重启） ====================
+function setupGlobalErrorHandlers(logger: Pino.Logger) {
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error({ reason }, '【严重】Unhandled Rejection - 可能导致进程崩溃');
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.fatal({ error }, '【致命】Uncaught Exception - 进程即将崩溃');
+    setTimeout(() => process.exit(1), 1500);
+  });
 }
 
 // ==================== 工具函数 ====================
@@ -55,189 +66,54 @@ async function handleError(
   stage: string
 ): Promise<void> {
   const err = error as Error;
-  const msg = `${stage}: ${err.message}`;
-  
-  logger.error({ taskId, error: err.message, stack: err.stack }, `[Worker] ${msg}`);
-  
+  logger.error({ taskId, error: err.message, stack: err.stack }, `[Worker] ${stage}`);
+
   try {
     await markStreamFailed(taskId, err);
   } catch (cleanupErr) {
-    logger.error({ taskId, error: cleanupErr }, `[Worker] 清理失败`);
+    logger.error({ taskId, error: cleanupErr }, `[Worker] 标记失败状态时出错`);
   }
 }
 
 /**
- * 构建消息
+ * 模拟 LLM 调用过程（已加强错误保护）
  */
-async function buildMessages(
-  prompt: string,
-  logger: Pino.Logger,
-  contextJson?: string,
-  messagesJson?: string,
-  files?: Array<any>,
-): Promise<Array<any>> {
-  const { HumanMessage, AIMessage } = await import("@langchain/core/messages");
-
-  const messages: Array<any> = [];
-
-  if (messagesJson) {
-    try {
-      const history = JSON.parse(messagesJson);
-      const recentMessages = history.slice(-10);
-
-      for (const m of recentMessages) {
-        let cleanContent = (m.content ?? '')
-          .replace(/(\[状态\]|正在调用工具:).*?\n?/g, '')
-          .trim();
-
-        if (!cleanContent) continue;
-
-        if (m?.role === 'user') {
-          messages.push(new HumanMessage(cleanContent));
-        } else if (m?.role === 'assistant') {
-          messages.push(new AIMessage(cleanContent));
-        }
-      }
-    } catch (e) {
-      logger.error({ error: e }, '[Worker] 解析消息历史失败');
-    }
-  }
-
-  let userText = prompt || '';
-  if (contextJson) {
-    userText += `\n\n[Context]\n\`\`\`json\n${contextJson}\n\`\`\`\n`;
-  }
-
-  const messageContent: any[] = [{ type: 'text', text: userText.trim() }];
-
-  if (files) {
-    for (const file of files) {
-      if (file.type === 'image' && file.dataUrl) {
-        messageContent.push({
-          type: 'image_url',
-          image_url: { url: file.dataUrl }
-        });
-      }
-    }
-  }
-
-  messages.push(new HumanMessage({ content: messageContent }));
-
-  return messages;
-}
-
-/**
- * 执行 Agent 并发布流式结果
- */
-async function executeAgentStreaming(
+async function simulateLLMCall(
   taskId: string,
-  agent: any,
-  messages: any[],
+  prompt: string,
+  documentUrls: string[],
   logger: Pino.Logger
-): Promise<{ tokensUsed?: number }> {
-  let firstTokenTime: number | null = null;
-  let tokensUsed = 0;
-
-  const eventStream = await agent.stream(
-    { messages },
-    { streamMode: ['updates', 'messages'] }
-  );
-
-  for await (const event of eventStream) {
-    if (Array.isArray(event) && event.length === 2) {
-      const [streamMode, chunk] = event;
-
-      if (streamMode === "messages") {
-        const [messageChunk, metadata] = chunk as [any, any];
-        const currentNode = metadata.langgraph_node;
-
-        const reasoning = messageChunk.additional_kwargs?.reasoning_content;
-        if (reasoning) {
-          await publishStreamChunk(taskId, {
-            type: "thought",
-            text: reasoning,
-          });
-        }
-
-        if (messageChunk?.content && typeof messageChunk.content === "string") {
-          if (firstTokenTime === null) {
-            firstTokenTime = Date.now();
-            await publishStreamChunk(taskId, {
-              type: "metrics",
-              ttft: firstTokenTime,
-            });
-          }
-
-          const messageType = currentNode === "tools" ? "thought" : "content";
-          await publishStreamChunk(taskId, {
-            type: messageType,
-            node: currentNode,
-            text: messageChunk.content,
-          });
-
-          tokensUsed += Math.ceil(messageChunk.content.length / 4);
-        }
-
-        if (messageChunk?.tool_calls && messageChunk.tool_calls.length > 0) {
-          for (const tc of messageChunk.tool_calls) {
-            await publishStreamChunk(taskId, {
-              type: "tool_call",
-              tool: tc.name,
-              message: `正在调用: ${tc.name}...`,
-            });
-          }
-        }
-      } else if (streamMode === "updates") {
-        await publishStreamChunk(taskId, {
-          type: "status",
-          text: "工具执行完成，正在整合结果...",
-        });
-      }
-    }
-  }
-
-  return { tokensUsed };
-}
-
-/**
- * 模拟 LLM 调用过程
- */
-async function simulateLLMCall(taskId: string, prompt: string, logger: Pino.Logger): Promise<void> {
-  const totalDuration = Math.floor(Math.random() * 120000) + 300000;
+): Promise<void> {
+  const taskLogger = logger.child({ taskId, function: 'simulateLLMCall' });
   const startTime = Date.now();
 
-  await publishStreamChunk(taskId, {
-    type: "thought",
-    text: "正在分析报表脚本需求...",
-  });
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 60000 + 60000));
+  try {
+    taskLogger.info(`开始模拟 LLM 调用流程`);
 
-  await publishStreamChunk(taskId, {
-    type: "tool_call",
-    tool: "get_labscare_script_rules",
-    message: "正在调用: get_labscare_script_rules...",
-  });
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 30000 + 30000));
+    await safePublish(taskId, { type: "thought", text: "正在读取模板占位符..." }, taskLogger);
+    await delay(Math.random() * 30000 + 30000);
 
-  await publishStreamChunk(taskId, {
-    type: "thought",
-    text: "已获取 LabsCare 报表脚本规范，开始分析规范内容...",
-  });
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 60000 + 60000));
+    await safePublish(taskId, { type: "thought", text: "正在分析报表脚本需求..." }, taskLogger);
+    await delay(Math.random() * 60000 + 60000);
 
-  await publishStreamChunk(taskId, {
-    type: "thought",
-    text: "正在分析报告模板和占位符...",
-  });
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 30000 + 30000));
+    await safePublish(taskId, {
+      type: "tool_call",
+      tool: "get_labscare_script_rules",
+      message: "正在调用: get_labscare_script_rules...",
+    }, taskLogger);
+    await delay(Math.random() * 30000 + 30000);
 
-  await publishStreamChunk(taskId, {
-    type: "thought",
-    text: "开始生成报表脚本...",
-  });
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 60000 + 60000));
+    await safePublish(taskId, { type: "thought", text: "已获取 LabsCare 报表脚本规范，开始分析规范内容..." }, taskLogger);
+    await delay(Math.random() * 60000 + 60000);
 
-  const mockScript = `
+    await safePublish(taskId, { type: "thought", text: "正在分析报告模板和占位符..." }, taskLogger);
+    await delay(Math.random() * 30000 + 30000);
+
+    await safePublish(taskId, { type: "thought", text: "开始生成报表脚本..." }, taskLogger);
+    await delay(Math.random() * 60000 + 60000);
+
+    // 生成模拟脚本并分块发送
+    const mockScript = `
 // 报表脚本 - 基于模拟生成
 const reportScript = {
   name: "Sample Report Script",
@@ -261,42 +137,47 @@ const reportScript = {
 module.exports = reportScript;
 `;
 
-  const chunks = mockScript.split('\n');
-  const chunkDelay = Math.floor((Math.random() * 30000 + 30000) / chunks.length);
+    const chunks = mockScript.split('\n');
+    const chunkDelay = Math.floor((Math.random() * 30000 + 30000) / Math.max(chunks.length, 1));
 
-  for (const chunk of chunks) {
-    if (chunk.trim()) {
-      await publishStreamChunk(taskId, {
-        type: "content",
-        text: chunk + '\n',
-      });
-      await new Promise(resolve => setTimeout(resolve, chunkDelay));
+    for (const chunk of chunks) {
+      if (chunk.trim()) {
+        await safePublish(taskId, { type: "content", text: chunk + '\n' }, taskLogger);
+        await delay(chunkDelay);
+      }
     }
-  }
 
-  await publishStreamChunk(taskId, {
-    type: "thought",
-    text: "正在检查生成的脚本...",
-  });
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 30000 + 30000));
+    await safePublish(taskId, { type: "thought", text: "正在检查生成的脚本..." }, taskLogger);
+    await delay(Math.random() * 30000 + 30000);
 
-  await publishStreamChunk(taskId, {
-    type: "thought",
-    text: "脚本生成完成，准备返回结果...",
-  });
-  await new Promise(resolve => setTimeout(resolve, 5000));
+    await safePublish(taskId, { type: "thought", text: "脚本生成完成，准备返回结果..." }, taskLogger);
+    await delay(5000);
 
-  const elapsed = Date.now() - startTime;
-  if (elapsed < totalDuration) {
-    await new Promise(resolve => setTimeout(resolve, totalDuration - elapsed));
+    taskLogger.info(`模拟 LLM 调用完成，总耗时 ${(Date.now() - startTime) / 1000} 秒`);
+  } catch (error) {
+    taskLogger.error({ error }, 'simulateLLMCall 执行异常');
+    throw error;
   }
 }
+
+/** 安全发布流式消息，防止单个 publish 失败导致整个任务崩溃 */
+async function safePublish(taskId: string, data: any, logger: Pino.Logger): Promise<void> {
+  try {
+    await publishStreamChunk(taskId, data);
+  } catch (err) {
+    logger.warn({ error: err, dataType: data.type }, `发布流消息失败，已跳过该 chunk`);
+    // 不抛出异常，继续执行后续流程
+  }
+}
+
+/** 延迟函数 */
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ==================== 核心处理器 ====================
 
 async function processor(job: Job<TaskProcessData>, logger: Pino.Logger): Promise<TaskProcessResult> {
-  const { taskId, name, reportId, reportName, additionalInstructions, documentUrls, advancedParams } = job.data;
-  const jobId = job.id;
+  const { taskId, name, reportId, reportName, additionalInstructions, documentUrls } = job.data;
+  const jobId = job.id!;
   const startTime = Date.now();
 
   const taskLogger = logger.child({
@@ -304,64 +185,41 @@ async function processor(job: Job<TaskProcessData>, logger: Pino.Logger): Promis
     jobId,
     taskId,
     reportId,
-    reportName
+    reportName,
   });
 
   try {
     taskLogger.info(`🚀 开始处理任务`);
 
-    const useMock = process.env.USE_MOCK_LLM === 'true';
+    // 当前使用模拟模式
+    await simulateLLMCall(taskId, additionalInstructions || name, documentUrls, taskLogger);
 
-    if (useMock) {
-      taskLogger.info(`使用模拟 LLM 模式`);
+    const duration = Date.now() - startTime;
 
-      await simulateLLMCall(taskId, additionalInstructions || name, taskLogger);
+    // 标记完成
+    await markStreamComplete(taskId, {
+      type: "metrics",
+      total_duration: duration,
+      tokensUsed: 123,
+    }).catch(err => {
+      taskLogger.warn({ error: err }, '标记流完成时失败');
+    });
 
-      const duration = Date.now() - startTime;
-      await markStreamComplete(taskId, {
-        type: "metrics",
-        total_duration: duration,
-        tokensUsed: 123,
-      });
+    taskLogger.info(`✅ 模拟任务处理完成，耗时 ${(duration / 1000).toFixed(1)}s`);
 
-      taskLogger.info(`✅ 模拟任务完成，耗时 ${(duration / 1000).toFixed(1)}s`);
-
-      return {
-        success: true,
-        duration,
-        tokensUsed: 123,
-      };
-    } else {
-      const agent = await createAgentInstance();
-
-      const prompt = additionalInstructions || `请根据报告 ${reportName} 生成分析结果`;
-      const messages = await buildMessages(prompt, taskLogger, undefined, undefined, 
-        documentUrls.map(url => ({ name: url, type: 'url', content: url }))
-      );
-
-      const result = await executeAgentStreaming(taskId, agent, messages, taskLogger);
-
-      const duration = Date.now() - startTime;
-      await markStreamComplete(taskId, {
-        type: "metrics",
-        total_duration: duration,
-        ...result,
-      });
-
-      taskLogger.info(`✅ 任务完成，耗时 ${(duration / 1000).toFixed(1)}s`);
-
-      return {
-        success: true,
-        duration,
-        ...result,
-      };
-    }
+    return {
+      success: true,
+      duration,
+      tokensUsed: 123,
+    };
 
   } catch (error: any) {
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    const duration = Date.now() - startTime;
     taskLogger.error(`❌ 任务处理失败，耗时 ${duration}s | 错误: ${error.message}`);
-    await handleError(taskId, error, taskLogger, '任务处理异常');
-    throw error;
+
+    await handleError(taskId, error, taskLogger, '任务处理异常').catch(() => {});
+
+    throw error; // 让 BullMQ 标记为 failed，支持重试
   }
 }
 
@@ -375,10 +233,13 @@ export function startTasksProcessor(logger: Pino.Logger): void {
     return;
   }
 
+  // 全局错误防护
+  setupGlobalErrorHandlers(logger);
+
   const workerOptions: WorkerOptions = {
     connection: getRedisConfig(),
-    concurrency: Number(process.env.WORKER_CONCURRENCY || 3),
-    lockDuration: 600_000,
+    concurrency: Number(process.env.WORKER_CONCURRENCY || 2), // mock 模式下建议先用 2，稳定后再调高
+    lockDuration: 300_000,   // 5 分钟（模拟模式不需要太长）
     stalledInterval: 30_000,
     maxStalledCount: 2,
   };
@@ -389,25 +250,25 @@ export function startTasksProcessor(logger: Pino.Logger): void {
     workerOptions
   );
 
-  const events = ['active', 'completed', 'failed', 'progress', 'error', 'stalled'] as const;
-  events.forEach((event) => {
-    workerInstance!.on(event, (job: Job, error?: Error) => {
-      try {
-        if (event === 'error') {
-          logger.error(`Worker error: ${job}`);
-        } else if (event === 'failed') {
-          logger.error(`Job ${job?.id || 'unknown'} failed: ${error?.message}`);
-        } else {
-          logger.info(`Job ${job?.id} ${event}`);
-        }
-      } catch (e) {
-        logger.error(`Event handler error (${event}): ${e}`);
-      }
-    });
+  // 事件监听优化
+  workerInstance.on('error', (err: Error) => {
+    logger.error({ error: err }, '[Worker] 全局 Worker 错误');
+  });
+
+  workerInstance.on('failed', (job, error) => {
+    logger.error({ jobId: job?.id, error: error?.message }, '[Worker] Job 执行失败');
+  });
+
+  workerInstance.on('stalled', (jobId) => {
+    logger.warn({ jobId }, '[Worker] Job 已 stalled，可能发生长时间阻塞');
+  });
+
+  workerInstance.on('completed', (job) => {
+    logger.info({ jobId: job.id }, '[Worker] Job 已完成');
   });
 
   global.taskWorker = workerInstance;
-  logger.info(`PID: ${process.pid} Tasks processor started with BullMQ`);
+  logger.info(`PID: ${process.pid} Tasks processor started with BullMQ (Mock Mode)`);
 }
 
 // ==================== Graceful Shutdown ====================

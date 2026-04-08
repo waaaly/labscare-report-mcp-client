@@ -8,10 +8,10 @@ export function getMinioConfig(): ClientOptions {
     secretKey: process.env.MINIO_SECRET_KEY || 'admin',
     pathStyle: true
   };
-  if (!process.env.MINIO_ENDPOINT) {
-    return config;
+  if (process.env.MINIO_PORT) {
+    return { ...config, port: parseInt(process.env.MINIO_PORT) };
   } else {
-    return { ...config, port: 9000 };
+    return config;
   }
 }
 

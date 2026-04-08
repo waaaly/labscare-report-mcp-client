@@ -5,10 +5,11 @@ import { useParams } from 'next/navigation';
 import { useProjectStore } from '@/store/project-store';
 import { useLabStore } from '@/store/lab-store';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, XCircle, X, Badge, Database } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, XCircle, X, Badge, Database, Eye } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import ReactMarkdown from 'react-markdown';
@@ -79,7 +80,7 @@ export default function ProjectWorkspacePage() {
           eventSource.close();
           setCompletedDocuments(prev => {
             const newCompleted = prev + 1;
-            
+
             // 检查是否所有文档都已完成
             if (newCompleted === totalDocumentsRef.current) {
               setTimeout(() => {
@@ -102,7 +103,7 @@ export default function ProjectWorkspacePage() {
                 }
               }, 500);
             }
-            
+
             return newCompleted;
           });
         }
@@ -118,6 +119,37 @@ export default function ProjectWorkspacePage() {
 
     return eventSource;
   };
+
+  const handleAddReport = async () => {
+    if (newReportName.trim() && currentLab?.id) {
+      try {
+        const response = await fetch(`/api/labs/${currentLab.id}/projects/${projectId}/reports`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: newReportName.trim(),
+            description: newReportDescription.trim(),
+          }),
+        });
+        if (response.ok) {
+          const newReport = await response.json();
+          addReport(newReport);
+          setIsAddReportDialogOpen(false);
+          setNewReportName('');
+          setNewReportDescription('');
+          toast.success('Report added successfully');
+        } else {
+          const error = await response.json();
+          toast.error(error.error || 'Failed to add report');
+        }
+      } catch (error) {
+        console.error('Failed to add report:', error);
+        toast.error('An error occurred while adding the report');
+      }
+    }
+  }
 
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
@@ -152,12 +184,12 @@ export default function ProjectWorkspacePage() {
         const prefixedFile = new File([file], prefixedFileName, { type: file.type });
         formData.append('files', prefixedFile);
       });
-      let formDataObj:any={};
+      let formDataObj: any = {};
       for (let [key, value] of formData.entries()) {
         formDataObj[key] = value;
       }
       console.log(formDataObj);
-      
+
       const response = await fetch(`/api/labs/${currentProject.labId}/projects/${projectId}/documents`, {
         method: 'POST',
         body: formData,
@@ -212,6 +244,33 @@ export default function ProjectWorkspacePage() {
       return <FileText className="h-5 w-5 text-cyan-600" />;
     }
     return <FileIcon className="h-5 w-5 text-gray-400" />;
+  };
+
+  const getTypeBadge = (type: string) => {
+    if (type.includes('pdf')) {
+      return <Badge className="text-xs">PDF</Badge>;
+    } else if (type.includes('image')) {
+      return <Badge className="text-xs">Image</Badge>;
+    } else if (type.includes('json')) {
+      return <Badge className="text-xs">JSON</Badge>;
+    } else if (type.includes('markdown') || type.includes('md')) {
+      return <Badge className="text-xs">MD</Badge>;
+    } else {
+      return <Badge className="text-xs">File</Badge>;
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const handlePreview = (document: any) => {
+    // 这里可以实现文件预览逻辑
+    console.log('Preview document:', document);
   };
 
   if (!currentProject) {
@@ -276,36 +335,7 @@ export default function ProjectWorkspacePage() {
 
               <div className="flex gap-3">
                 <Button
-                  onClick={async () => {
-                    if (newReportName.trim() && currentLab?.id) {
-                      try {
-                        const response = await fetch(`/api/labs/${currentLab.id}/projects/${projectId}/reports`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            name: newReportName.trim(),
-                            description: newReportDescription.trim(),
-                          }),
-                        });
-                        if (response.ok) {
-                          const newReport = await response.json();
-                          addReport(newReport);
-                          setIsAddReportDialogOpen(false);
-                          setNewReportName('');
-                          setNewReportDescription('');
-                          toast.success('Report added successfully');
-                        } else {
-                          const error = await response.json();
-                          toast.error(error.error || 'Failed to add report');
-                        }
-                      } catch (error) {
-                        console.error('Failed to add report:', error);
-                        toast.error('An error occurred while adding the report');
-                      }
-                    }
-                  }}
+                  onClick={handleAddReport}
                   disabled={!newReportName.trim()}
                   className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
                 >
@@ -328,7 +358,7 @@ export default function ProjectWorkspacePage() {
         </Dialog>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6">
         {reports.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 text-center">
             <FileText className="h-12 w-12 text-gray-300 mb-3" />
@@ -336,146 +366,111 @@ export default function ProjectWorkspacePage() {
             <p className="text-xs text-gray-400">Add your first report to start</p>
           </div>
         ) : (
-          <Accordion type="single" collapsible className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {reports.map((report) => (
-              <AccordionItem key={report.id} value={report.id} className="border rounded-lg bg-white px-0">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50">
-                  <div className="flex items-center justify-between w-full pr-4">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-cyan-600" />
-                      <div className="text-left">
-                        <span className="text-sm font-medium">{report.name}</span>
-                        {report.description && (
-                          <p className="text-xs text-gray-500 mt-1">{report.description}</p>
-                        )}
-                        {report?.task ? (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Task: {report.task.name} - {report.task.status}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-gray-500 mt-1">暂无相关任务</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {report?.task?.status && (
-                        <Badge className="text-xs">{report?.task?.status}</Badge>
-                      )}
-                      <span
-                        role="button"
-                        className="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-3 bg-ghost hover:bg-muted cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedReportId(report.id);
-                          setIsFileUploadDrawerOpen(true);
-                        }}
-                      >
-                        <Upload className="mr-1 h-3 w-3" />
-                        Upload
-                      </span>
-                    </div>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4 h-full overflow-y-auto">
-                  <div className="space-y-4">
-                    {report.documents && report.documents.length > 0 ? (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Documents</h4>
-                        <div className="grid grid-cols-3 gap-3">
-                          {report.documents.map((doc) => {
-                            const fileExtension = doc.name.split('.').pop()?.toLowerCase();
-                            let fileType = 'other';
-                            if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')) {
-                              fileType = 'image';
-                            } else if (fileExtension === 'json') {
-                              fileType = 'json';
-                            } else if (fileExtension === 'md') {
-                              fileType = 'md';
-                            }
-
-                            if (fileType === 'image') {
-                              return (
-                                <div key={doc.id} className="w-full aspect-square rounded-lg overflow-hidden border bg-background">
-                                  <img
-                                    src={(() => {
-                                      if (!doc.url) return '';
-                                      const baseUrl = process.env.NEXT_PUBLIC_MINIO_PUBLIC_HOST || '';
-                                      // 确保路径拼接时没有多余的斜杠
-                                      const hasTrailingSlash = baseUrl.endsWith('/');
-                                      const hasLeadingSlash = doc.url.startsWith('/');
-                                      
-                                      if (baseUrl && hasTrailingSlash && hasLeadingSlash) {
-                                        return baseUrl + doc.url.substring(1);
-                                      } else if (baseUrl && !hasTrailingSlash && !hasLeadingSlash) {
-                                        return baseUrl + '/' + doc.url;
-                                      } else {
-                                        return baseUrl + doc.url;
-                                      }
-                                    })()}
-                                    alt={doc.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                              );
-                            }
-
-                            if (fileType === 'json') {
-                              return (
-                                <div key={doc.id} className="w-full aspect-square border rounded-lg bg-background overflow-hidden">
-                                  <div className="p-2 h-full flex flex-col">
-                                    <div className="flex items-center gap-1 mb-1">
-                                      <Database className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                                      <span className="text-xs font-medium truncate">{doc.name}</span>
-                                    </div>
-                                    <pre className="text-xs font-mono bg-muted/30 p-1 rounded flex-1 overflow-hidden text-ellipsis">
-                                      {doc.content ? JSON.stringify(doc.content, null, 2) : 'No content'}
-                                    </pre>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            if (fileType === 'md') {
-                              return (
-                                <div key={doc.id} className="w-full aspect-square border rounded-lg bg-background overflow-hidden">
-                                  <div className="p-2 h-full flex flex-col">
-                                    <div className="flex items-center gap-1 mb-1">
-                                      <FileIcon className="w-3 h-3 text-purple-500 flex-shrink-0" />
-                                      <span className="text-xs font-medium truncate">{doc.name}</span>
-                                    </div>
-                                    <div className="text-xs bg-muted/30 p-1 rounded flex-1 overflow-hidden">
-                                      <ReactMarkdown>{doc.content || ''}</ReactMarkdown>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <div key={doc.id} className="w-full aspect-square flex flex-col justify-between p-2 border rounded-md">
-                                <div className="flex items-center gap-2">
-                                  {getFileIcon(doc.type || 'other')}
-                                  <span className="text-xs truncate flex-1">{doc.name}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs text-gray-500">{new Date(doc.createdAt).toLocaleDateString()}</p>
-                                  <Badge className="text-xs">{doc.status}</Badge>
-                                </div>
-                              </div>
-                            );
-                          })}
+              <Accordion key={report.id} type="single" collapsible className="w-full">
+                <AccordionItem value={report.id} className="border rounded-lg bg-white px-0 h-full">
+                  <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50">
+                    <div className="grid grid-cols-4 gap-4 w-full">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-cyan-600" />
+                        <div className="text-left">
+                          <span className="text-sm font-medium">{report.name}</span>
+                          {report.description && (
+                            <p className="text-xs text-gray-500 mt-1">{report.description}</p>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <div className="p-4 text-center text-sm text-gray-500 h-[120px] flex items-center justify-center">
-                        No documents uploaded yet
+                      <div className="text-left">
+                        <span className="text-sm font-medium">{report.documents?.length || 0} 文档</span>
                       </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                      <div className="text-left">
+                        {report?.task ? (
+                          <div>
+                            <span className="text-sm font-medium">{report.task.name}</span>
+                            <p className="text-xs text-gray-500 mt-1">{report.task.status}</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm font-medium">暂无相关任务</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-sm font-medium h-8 px-3"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedReportId(report.id);
+                            setIsFileUploadDrawerOpen(true);
+                          }}
+                        >
+                          <Upload className="mr-1 h-3 w-3" />
+                          Upload
+                        </Button>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 h-full overflow-y-auto">
+                    <div className="space-y-4">
+                      {report.documents && report.documents.length > 0 ? (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Documents</h4>
+                          <div className="grid grid-cols-3 gap-2">
+                            {report.documents.map((document) => (
+                              <Card
+                                key={document.id}
+                                className={cn(
+                                  "group hover:shadow-md transition-all duration-200 cursor-pointer border-2",
+                                  "border-gray-200"
+                                )}
+                              >
+                                <CardContent className="p-3">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                                      {getFileIcon(document.type || 'other')}
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-gray-900 truncate" title={document.name}>
+                                          {document.name}
+                                        </p>
+                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                          {getTypeBadge(document.type || 'other')}
+                                          <span className="text-xs text-gray-500">
+                                            {formatFileSize(document.size || 0)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handlePreview(document);
+                                        }}
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 text-center text-sm text-gray-500 h-[120px] flex items-center justify-center">
+                          No documents uploaded yet
+                        </div>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             ))}
-          </Accordion>
+          </div>
         )}
       </div>
 
