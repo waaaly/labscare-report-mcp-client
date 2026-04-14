@@ -22,7 +22,9 @@ export default function ScriptsPage() {
       id: '1',
       name: 'Blood Test Extractor',
       projectId: 'project-1',
+      projectName: 'Cardiology Department',
       reportId: 'report-1',
+      reportName: 'Annual Health Check',
       createdAt: '2026-04-10T10:00:00Z',
       updatedAt: '2026-04-12T14:30:00Z'
     },
@@ -30,7 +32,9 @@ export default function ScriptsPage() {
       id: '2',
       name: 'Urine Analysis Script',
       projectId: 'project-1',
+      projectName: 'Cardiology Department',
       reportId: 'report-2',
+      reportName: 'Follow-up Visit',
       createdAt: '2026-04-09T09:15:00Z',
       updatedAt: '2026-04-09T09:15:00Z'
     },
@@ -38,7 +42,9 @@ export default function ScriptsPage() {
       id: '3',
       name: 'Imaging Results Parser',
       projectId: 'project-2',
+      projectName: 'Radiology Department',
       reportId: 'report-3',
+      reportName: 'MRI Scan Results',
       createdAt: '2026-04-08T16:45:00Z',
       updatedAt: '2026-04-08T16:45:00Z'
     }
@@ -46,14 +52,34 @@ export default function ScriptsPage() {
 
   // 过滤和排序脚本
   const filteredScripts = scripts
-    .filter(script => 
-      script.name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    .filter(script => {
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        script.name.toLowerCase().includes(searchLower) ||
+        script.projectName.toLowerCase().includes(searchLower) ||
+        script.reportName.toLowerCase().includes(searchLower)
+      );
+    })
     .sort((a, b) => {
       if (sortBy === 'createdAt') {
         return sortOrder === 'asc' 
           ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      if (sortBy === 'name') {
+        return sortOrder === 'asc' 
+          ? a.name.localeCompare(b.name)
+          : b.name.localeCompare(a.name);
+      }
+      if (sortBy === 'projectName') {
+        return sortOrder === 'asc'
+          ? a.projectName.localeCompare(b.projectName)
+          : b.projectName.localeCompare(a.projectName);
+      }
+      if (sortBy === 'reportName') {
+        return sortOrder === 'asc'
+          ? a.reportName.localeCompare(b.reportName)
+          : b.reportName.localeCompare(a.reportName);
       }
       return 0;
     });
@@ -93,7 +119,9 @@ export default function ScriptsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="createdAt">Created Date</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="name">Script Name</SelectItem>
+                  <SelectItem value="projectName">Project Name</SelectItem>
+                  <SelectItem value="reportName">Report Name</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={sortOrder} onValueChange={setSortOrder}>
@@ -113,27 +141,35 @@ export default function ScriptsPage() {
       {/* 数据表格 */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
+          <Table className="table-fixed">
+            <TableHeader className="bg-[#ECFEFF]">
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Project ID</TableHead>
-                <TableHead>Report ID</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead>Updated At</TableHead>
+                <TableHead className="w-1/3 text-[#164E63] font-medium">Script Name</TableHead>
+                <TableHead className="w-1/4 text-[#164E63] font-medium">Project Name</TableHead>
+                <TableHead className="w-1/4 text-[#164E63] font-medium">Report Name</TableHead>
+                <TableHead className="w-1/6 text-[#164E63] font-medium">Created At</TableHead>
+                <TableHead className="w-1/6 text-[#164E63] font-medium">Updated At</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedScripts.map((script) => (
-                <Link key={script.id} href={`/scripts/${script.id}`}>
-                  <TableRow className="cursor-pointer hover:bg-muted/50 transition-colors">
-                    <TableCell className="font-medium">{script.name}</TableCell>
-                    <TableCell>{script.projectId}</TableCell>
-                    <TableCell>{script.reportId}</TableCell>
-                    <TableCell>{new Date(script.createdAt).toLocaleString()}</TableCell>
-                    <TableCell>{new Date(script.updatedAt).toLocaleString()}</TableCell>
-                  </TableRow>
-                </Link>
+                <TableRow key={script.id} className="cursor-pointer hover:bg-muted/50 transition-colors">
+                  <TableCell className="w-1/3 font-medium text-[#164E63]">
+                    <Link href={`/scripts/${script.id}`} className="block w-full h-full">{script.name}</Link>
+                  </TableCell>
+                  <TableCell className="w-1/4 text-[#164E63]">
+                    <Link href={`/scripts/${script.id}`} className="block w-full h-full">{script.projectName}</Link>
+                  </TableCell>
+                  <TableCell className="w-1/4 text-[#164E63]">
+                    <Link href={`/scripts/${script.id}`} className="block w-full h-full">{script.reportName}</Link>
+                  </TableCell>
+                  <TableCell className="w-1/6 text-[#164E63]">
+                    <Link href={`/scripts/${script.id}`} className="block w-full h-full">{new Date(script.createdAt).toLocaleString()}</Link>
+                  </TableCell>
+                  <TableCell className="w-1/6 text-[#164E63]">
+                    <Link href={`/scripts/${script.id}`} className="block w-full h-full">{new Date(script.updatedAt).toLocaleString()}</Link>
+                  </TableCell>
+                </TableRow>
               ))}
             </TableBody>
           </Table>

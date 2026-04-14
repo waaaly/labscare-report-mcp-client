@@ -53,6 +53,7 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "i18next-http-backend": "^3.0.2",
     "ioredis": "^5.10.1",
+    "jsoneditor": "^10.4.3",
     "langchain": "^1.2.37",
     "libreoffice-convert": "^1.8.1",
     "lucide-react": "^0.460.0",
@@ -81,6 +82,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/jsoneditor": "^9.9.6",
     "@types/node": "^22.7.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",

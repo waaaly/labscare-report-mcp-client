@@ -1,14 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play, Code, Database, FileText } from 'lucide-react';
+import { Play, Code, Database, FileText, ArrowLeft } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import Link from 'next/link';
+import JSONEditor from 'jsoneditor';
+import 'jsoneditor/dist/jsoneditor.min.css';
 
+// 自定义 JSONEditor 样式
+const customStyles = `
+  <style>
+    /* 覆盖 JSONEditor 默认蓝色配色 */
+    .jsoneditor, .jsoneditor-menu {
+      border-color: #0891B2 !important;
+    }
+    .jsoneditor-menu {
+      background-color: #ECFEFF !important;
+    }
+    .jsoneditor-field {
+      color: #164E63 !important;
+    }
+    .jsoneditor-value {
+      color: #059669 !important;
+    }
+    .jsoneditor-string {
+      color: #059669 !important;
+    }
+    .jsoneditor-number {
+      color: #0891B2 !important;
+    }
+    .jsoneditor-boolean {
+      color: #164E63 !important;
+    }
+    .jsoneditor-null {
+      color: #64748B !important;
+    }
+  </style>
+`;
+
+// 注入自定义样式
+if (typeof document !== 'undefined') {
+  const styleElement = document.createElement('div');
+  styleElement.innerHTML = customStyles;
+  document.head.appendChild(styleElement.firstChild as Node);
+}
 interface ScriptDetails {
   id: string;
   name: string;
@@ -23,6 +63,8 @@ interface ScriptDetails {
 export default function ScriptDetailPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<any>(null);
+  const jsonEditorRef = useRef<HTMLDivElement>(null);
+  const jsonEditorInstance = useRef<JSONEditor | null>(null);
 
   // 模拟脚本详情数据
   const script: ScriptDetails = {
@@ -105,20 +147,59 @@ console.log(extractBloodTestResults(testData));
     }, 1000);
   };
 
+  useEffect(() => {
+    if (jsonEditorRef.current) {
+      // 销毁之前的实例
+      if (jsonEditorInstance.current) {
+        jsonEditorInstance.current.destroy();
+      }
+
+      // 初始化 JSONEditor
+      const editor = new JSONEditor(jsonEditorRef.current, {
+        mode: 'view',
+        indentation: 2,
+        theme: 'light',
+        statusBar: false,
+        search: false,
+        navigationBar: false
+      });
+
+      // 设置数据
+      editor.set(script.dataSource);
+      jsonEditorInstance.current = editor;
+    }
+
+    // 清理函数
+    return () => {
+      if (jsonEditorInstance.current) {
+        jsonEditorInstance.current.destroy();
+      }
+    };
+  }, [script.dataSource]);
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Script Details</h1>
-        <p className="text-muted-foreground">
-          View and manage your script
-        </p>
+      <div className="bg-[#ECFEFF] p-6 rounded-lg">
+        <div className="flex items-center gap-4">
+          <Link href="/scripts">
+            <Button variant="ghost" size="icon" className="cursor-pointer hover:bg-white/50">
+              <ArrowLeft className="h-5 w-5 text-[#164E63]" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-[#164E63]">Script Details</h1>
+            <p className="text-muted-foreground">
+              View and manage your script
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* 顶部卡片展示脚本数据和模拟运行按钮 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-2xl">{script.name}</CardTitle>
-          <Button 
+          <Button
             onClick={handleRunScript}
             disabled={isRunning}
             className="flex items-center gap-2"
@@ -163,8 +244,8 @@ console.log(extractBloodTestResults(testData));
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[600px]">
-              <SyntaxHighlighter 
-                language="javascript" 
+              <SyntaxHighlighter
+                language="javascript"
                 style={vscDarkPlus}
                 className="rounded-md"
               >
@@ -195,11 +276,7 @@ console.log(extractBloodTestResults(testData));
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="data" className="h-[540px]">
-                <ScrollArea className="h-full">
-                  <pre className="bg-muted p-4 rounded-md text-sm font-mono whitespace-pre-wrap">
-                    {JSON.stringify(script.dataSource, null, 2)}
-                  </pre>
-                </ScrollArea>
+                <div ref={jsonEditorRef} className="w-full h-full"></div>
               </TabsContent>
               <TabsContent value="results" className="h-[540px]">
                 <ScrollArea className="h-full">
