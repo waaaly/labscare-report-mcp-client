@@ -79,6 +79,7 @@ model Document {
   description String?
   storagePath String?  @map("storage_path")
   content     Json?
+  mdContent   String?  @map("md_content")
   pdf         String?
   cover       String?
   createdAt   DateTime @default(now())

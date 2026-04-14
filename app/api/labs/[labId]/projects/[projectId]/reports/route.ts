@@ -110,6 +110,8 @@ export async function GET(
             id: true,
             name: true,
             url: true,
+            size: true,
+            type: true,
             content: true,
             status: true,
             createdAt: true,

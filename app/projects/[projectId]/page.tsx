@@ -395,10 +395,8 @@ export default function ProjectWorkspacePage() {
                         )}
                       </div>
                       <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-sm font-medium h-8 px-3"
+                        <div
+                          className="flex items-center justify-center text-sm font-medium h-8 px-3"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedReportId(report.id);
@@ -407,7 +405,7 @@ export default function ProjectWorkspacePage() {
                         >
                           <Upload className="mr-1 h-3 w-3" />
                           Upload
-                        </Button>
+                        </div>
                       </div>
                     </div>
                   </AccordionTrigger>

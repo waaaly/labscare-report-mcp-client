@@ -138,7 +138,7 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
     const isDocFile = fileType.includes('word') || fileType.includes('docx') || fileType.includes('msword');
     const isTextFile = fileType.includes('text/') || fileType.includes('application/json') || fileType.includes('application/xml') || fileType.includes('text/markdown') || fileType.includes('text/csv');
 
-    let url = '', pdf: string | null = null, coverUrl: string | null = null, content: string | undefined;
+    let url = '', pdf: string | null = null, coverUrl: string | null = null, content: string | undefined, mdContent: string | undefined;
 
     if (isDocFile) {
       taskLogger.info('检测到 Word 文档，开始转换...');
@@ -173,8 +173,15 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
       // 处理文本类型文件，读取内容
       if (isTextFile) {
         try {
-          content = buffer.toString('utf8');
-          taskLogger.info(`文本文件内容读取成功，长度: ${content.length} 字符`);
+          const fileContent = buffer.toString('utf8');
+          taskLogger.info(`文本文件内容读取成功，长度: ${fileContent.length} 字符`);
+          
+          // 区分 Markdown 文件和其他文本文件
+          if (fileType.includes('markdown') || fileType.includes('md') || fileName.endsWith('.md')) {
+            mdContent = fileContent;
+          } else {
+            content = fileContent;
+          }
         } catch (error) {
           taskLogger.warn(`文本文件内容读取失败: ${error}`);
           content = undefined;
@@ -188,6 +195,9 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
     const updateData: any = { status: 'COMPLETED', url, pdf, cover: coverUrl };
     if (content !== undefined) {
       updateData.content = content;
+    }
+    if (mdContent !== undefined) {
+      updateData.mdContent = mdContent;
     }
     await prisma.document.update({
       where: { id: documentId },
