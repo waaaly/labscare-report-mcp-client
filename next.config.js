@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@modelcontextprotocol/sdk'],
-  serverExternalPackages: ['libreoffice-convert', 'langchain', '@langchain/openai', 'ioredis'], 
+  serverExternalPackages: ['libreoffice-convert', 'langchain', '@langchain/openai', 'ioredis','isolated-vm'], 
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

@@ -32,10 +32,10 @@ export async function POST(request: Request) {
         domain, 
         token,
         version: '1.0.0', // 默认版本
-        fieldMappings: fieldMappings as Prisma.InputJsonValue,
-        extractionRules: extractionRules as Prisma.InputJsonValue,
-        sampleFilters: sampleFilters as Prisma.InputJsonValue,
-        promptTemplates: promptTemplates as Prisma.InputJsonValue,
+        // fieldMappings: fieldMappings as Prisma.InputJsonValue,
+        // extractionRules: extractionRules as Prisma.InputJsonValue,
+        // sampleFilters: sampleFilters as Prisma.InputJsonValue,
+        // promptTemplates: promptTemplates as Prisma.InputJsonValue,
       },
     });
 

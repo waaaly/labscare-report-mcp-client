@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useScriptStore } from '@/store/script-store';
 import { useLabStore } from '@/store/lab-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play, Code, Database, FileText, ArrowLeft, FolderKanban, FileVolume, Activity, Terminal } from 'lucide-react';
+import { Play, Code, Database, FileText, ArrowLeft, FolderKanban, FileArchive, Activity, Terminal } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import Link from 'next/link';
@@ -57,6 +57,9 @@ export default function ScriptDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { currentLab } = useLabStore();
   const { currentScript, loadScript, isLoading, error } = useScriptStore();
+  const [isRunning, setIsRunning] = useState(false);
+  const [runResult, setRunResult] = useState<any>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const jsonEditorRef = useRef<HTMLDivElement>(null);
   const jsonEditorInstance = useRef<JSONEditor | null>(null);
 
@@ -95,6 +98,41 @@ export default function ScriptDetailPage() {
       }
     };
   }, [currentScript?.dataSource]);
+
+  const handleRunScript = async () => {
+    if (!currentScript) return;
+
+    setIsRunning(true);
+    setRunResult(null);
+    setRunError(null);
+
+    try {
+      const response = await fetch('/api/runner', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id: currentScript.id,
+          dataSourceId: currentScript.dataSourceId,
+          projectId: currentScript.projectId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setRunResult(result.data);
+      } else {
+        setRunError(result.error || 'Failed to run script');
+      }
+    } catch (error) {
+      setRunError('An error occurred while running the script');
+      console.error('Error running script:', error);
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -143,10 +181,16 @@ export default function ScriptDetailPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-2xl">{currentScript.name}</CardTitle>
           <Button
+            onClick={handleRunScript}
+            disabled={isRunning}
             className="flex items-center gap-2"
           >
-            <Play className="h-4 w-4" />
-            Run Script
+            {isRunning ? 'Running...' : (
+              <>
+                <Play className="h-4 w-4" />
+                Run Script
+              </>
+            )}
           </Button>
         </CardHeader>
         <CardContent>
@@ -176,7 +220,7 @@ export default function ScriptDetailPage() {
             <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2 bg-[#ECFEFF] rounded-md">
-                  <FileVolume className="h-5 w-5 text-[#0891B2]" />
+                  <FileArchive className="h-5 w-5 text-[#0891B2]" />
                 </div>
                 <h3 className="font-semibold text-[#164E63]">Report</h3>
               </div>
@@ -258,9 +302,8 @@ export default function ScriptDetailPage() {
             <ScrollArea className="h-[600px]">
               <SyntaxHighlighter
                 language="javascript"
-                showLineNumbers={true}
-                showInlineLineNumbers={true}
                 style={vscDarkPlus}
+                showLineNumbers={true}
                 className="rounded-md"
               >
                 {currentScript.code || ''}
@@ -294,9 +337,23 @@ export default function ScriptDetailPage() {
               </TabsContent>
               <TabsContent value="results" className="h-[540px]">
                 <ScrollArea className="h-full">
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    Run the script to see results
-                  </div>
+                  {runError ? (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-600">
+                      <h4 className="font-medium mb-2">Error</h4>
+                      <p>{runError}</p>
+                    </div>
+                  ) : runResult ? (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                      <h4 className="font-medium mb-2 text-green-700">Success</h4>
+                      <pre className="bg-white p-4 rounded-md text-sm font-mono whitespace-pre-wrap">
+                        {JSON.stringify(runResult, null, 2)}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      Run the script to see results
+                    </div>
+                  )}
                 </ScrollArea>
               </TabsContent>
             </Tabs>
