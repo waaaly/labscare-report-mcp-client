@@ -187,6 +187,7 @@ export async function getDocumentStatus(documentId: string): Promise<string | nu
  * @returns 任务ID
  */
 export async function appendDocumentProcessingTask(
+  labId: string,
   documentId: string,
   projectId: string,
   fileName: string,
@@ -200,12 +201,13 @@ export async function appendDocumentProcessingTask(
       throw new Error('Document queue is not initialized');
     }
     const job = await documentQueue.add('process-document', {
+      labId,
       documentId,
       projectId,
+      reportId,
       fileName,
       fileType,
       tempFilePath,
-      reportId,
       createdAt: new Date().toISOString(),
       size: size || 0
     

@@ -9,168 +9,164 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+// 枚举定义
+enum TaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum DocStatus {
+  UPLOADING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
 
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
   email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
 }
 
 model Lab {
   id               String   @id @default(cuid())
   name             String
-  domain           String
+  domain           String   @unique // 增加唯一约束
   token            String
   version          String
-  fieldMappings    Json?
-  extractionRules  Json?
-  sampleFilters    Json?
-  promptTemplates  Json?
-  knowledgeBase    Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  
   projects         Project[]
+  reports          Report[]
   tasks            Task[]
+  scripts          Script[]
+
+  @@map("labs")
 }
 
 model Project {
   id          String   @id @default(cuid())
-  labId       String
+  labId       String   @map("lab_id")
   name        String
-  description String?
-  limsPid     String   @unique
-  caseId      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  limsPid     String   @unique @map("lims_pid")
+  createdAt   DateTime @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at") // 软删除支持
+
+  lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
   reports     Report[]
   documents   Document[]
-  schemas     Schema[]
   scripts     Script[]
-  
-  lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  tasks       Task[]    // 建立直接关联
+
+  @@index([labId])
+  @@map("projects")
 }
 
 model Report {
   id          String   @id @default(cuid())
-  projectId   String
+  labId       String   @map("lab_id")
+  projectId   String   @map("project_id")
   name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  description String?   @map("description")
+  createdAt   DateTime @default(now()) @map("created_at")
   
+  lab         Lab      @relation(fields: [labId], references: [id]) // 2. 添加反向关联
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   documents   Document[]
   tasks       Task[]
   scripts     Script[]
+
+  @@index([labId, projectId])
+  @@map("reports")
 }
 
 model Document {
-  id          String   @id @default(cuid())
-  projectId   String
-  reportId    String?
+  id          String    @id @default(cuid())
+  projectId   String    @map("project_id")
+  reportId    String   @map("report_id")
   name        String
   type        String  
   url         String
-  status      String
-  size        Int?
-  description String?
-  storagePath String?  @map("storage_path")
-  content     Json?
-  mdContent   String?  @map("md_content")
+  status      DocStatus @default(UPLOADING) // 使用枚举
+  size        BigInt?   // 升级为 BigInt 防止溢出
+  storagePath String?   @map("storage_path")
+  createdAt   DateTime  @default(now()) @map("created_at")
   pdf         String?
   cover       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  report      Report?  @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  
-  @@index([projectId])
-  @@index([reportId])
-  @@index([projectId, type])
-  @@index([reportId, type])
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report      Report?   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  // 添加这行，用于承接 Script 里的 dataSource 关系
+  scripts     Script[] //scrpipt需要关联json作为datasource
+  @@index([projectId, reportId, status,type]) // 优化查询索引
+  @@map("documents")
 }
-
-model Schema {
-  id          String   @id @default(cuid())
-  projectId   String
-  name        String
-  definition  Json
-  version     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
-
-
 
 model Task {
   id                     String         @id @default(cuid())
   labId                  String         @map("lab_id")
-  name                   String
+  projectId              String         @map("project_id") // 冗余项目ID提升性能
   reportId               String         @map("report_id")
-  reportType             String?        @map("report_type")
-  additionalInstructions String?        @map("additional_instructions")
-  status                 String
+  status                 TaskStatus     @default(PENDING) // 使用枚举
   progress               Int            @default(0)
-  temperature            Float?         @default(0.7)
-  maxTokens              Int?           @default(4000) @map("max_tokens")
-  model                  String?        @default("claude-sonnet-4.5")
-  result                 Json?
-  error                  String?
-  duration               Int?
-  createdAt              DateTime       @default(now())
+  model                  String?        @default("claude-3-5-sonnet")
+  duration               Int?           // 运行耗时（秒）
+  createdAt              DateTime       @default(now()) @map("created_at")
   completedAt            DateTime?      @map("completed_at")
-  updatedAt              DateTime       @updatedAt
-  logs                   TaskLog[]
   
   lab                    Lab            @relation(fields: [labId], references: [id])
-  
-  report    Report @relation(fields: [reportId], references: [id])
-  
-  @@index([labId])
-  @@index([status])
-  @@index([createdAt])
-  @@index([reportType])
-  @@index([reportId])
+  project                Project        @relation(fields: [projectId], references: [id])
+  report                 Report         @relation(fields: [reportId], references: [id])
+  logs                   TaskLog[]
+  scripts                Script[]       // 产物关联
+
   @@index([labId, status])
-  @@index([reportId, createdAt])
-  @@index([status, createdAt])
+  @@index([projectId,reportId])
+  @@map("tasks")
 }
+
 model Script {
   id          String   @id @default(cuid())
-  projectId   String
-  reportId    String
+  labId       String   @map("lab_id")
+  projectId   String   @map("project_id")
+  reportId    String   @map("report_id")
+  taskId      String   @map("task_id")    // 产物溯源
   name        String
-  code        String
-  dataSource  Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  code        String   @db.Text           // 明确长文本类型
+    // 核心字段：关联到数据源文档
+  dataSourceId     String   @map("data_source_id")
+  version     Int      @default(1)        // 版本管理
+  createdAt   DateTime @default(now()) @map("created_at")
   
+  lab         Lab      @relation(fields: [labId], references: [id]) // 2. 添加反向关联
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  
-  @@index([projectId])
-  @@index([reportId])
-  @@unique([reportId, name])
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+ // 关系映射
+  dataSource       Document @relation(fields: [dataSourceId], references: [id])
+
+  @@index([taskId,dataSourceId])
+  @@unique([taskId, name]) // 同一个任务生成的产物名唯一
+  @@map("scripts")
 }
+
 model TaskLog {
   id        String   @id @default(cuid())
   taskId    String   @map("task_id")
   timestamp DateTime @default(now())
-  type      String
-  content   String
-  metadata  Json?
+  level     String   @default("INFO") // 增加日志级别（INFO/ERROR）
+  content   String   @db.Text
   
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@index([taskId])
-  @@index([timestamp])
-  @@index([type])
+
   @@index([taskId, timestamp])
-  @@index([taskId, type, timestamp])
+  @@map("task_logs")
 }

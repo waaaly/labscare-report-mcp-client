@@ -34,37 +34,6 @@ async function main() {
           domain: 'clinical',
           token: 'demo-token-12345',
           version: '1.0.0',
-          fieldMappings: {
-            'patientId': { cell: 'A2', type: 'string' },
-            'sampleDate': { cell: 'B2', type: 'date' },
-            'testResult': { cell: 'C2', type: 'string' },
-          },
-          extractionRules: {
-            'numericExtraction': {
-              pattern: '\\d+\\.\\d+',
-              description: 'Extract numeric values with decimal points',
-            },
-          },
-          sampleFilters: {
-            'activeSamples': {
-              field: 'status',
-              operator: 'equals',
-              value: 'active',
-            },
-          },
-          promptTemplates: {
-            'extraction': {
-              name: 'Data Extraction',
-              template: 'Extract {{fields}} from document',
-              variables: ['fields'],
-            },
-          },
-          knowledgeBase: {
-            'bloodTestGuide': {
-              title: 'Blood Test Interpretation Guide',
-              content: 'Reference guide for blood test results',
-            },
-          },
         },
       });
       console.log('✅ Created lab:', lab.name);
@@ -89,8 +58,6 @@ async function main() {
           labId: lab.id,
           limsPid: '3301322',
           name: 'Blood Test Analysis',
-          description: 'Automated extraction of blood test results from PDF reports',
-          caseId: 'CASE-2024-001',
         },
       });
       console.log('✅ Created project:', project.name);
@@ -104,6 +71,7 @@ async function main() {
   const reports = await Promise.all([
     prisma.report.create({
       data: {
+        labId: lab.id,
         projectId: project.id,
         name: 'Patient Blood Test Report',
         description: 'Comprehensive blood test results for patient',
@@ -111,6 +79,7 @@ async function main() {
     }),
     prisma.report.create({
       data: {
+        labId: lab.id,
         projectId: project.id,
         name: 'Annual Health Check Report',
         description: 'Annual health check blood test results',
@@ -129,9 +98,8 @@ async function main() {
         name: 'blood_test_report.pdf',
         type: 'application/pdf',
         url: '/uploads/blood_test_report.pdf',
-        status: 'COMPLETED',
+        status: 'SUCCESS',
         size: 512000,
-        description: 'Blood test report PDF',
         storagePath: '/uploads/blood_test_report.pdf',
         pdf: '/uploads/blood_test_report.pdf',
         cover: '/uploads/blood_test_report_cover.jpg',
@@ -144,16 +112,10 @@ async function main() {
         name: 'patient_info.json',
         type: 'application/json',
         url: '/uploads/patient_info.json',
-        status: 'COMPLETED',
+        status: 'SUCCESS',
         size: 2048,
-        description: 'Patient information JSON',
         storagePath: '/uploads/patient_info.json',
-        content: {
-          patientId: 'P12345',
-          name: 'John Doe',
-          age: 35,
-          gender: 'Male'
-        },
+        pdf: '/uploads/patient_info.json',
       },
     }),
     prisma.document.create({
@@ -165,7 +127,6 @@ async function main() {
         url: '/uploads/annual_health_check.pdf',
         status: 'PROCESSING',
         size: 819200,
-        description: 'Annual health check PDF',
         storagePath: '/uploads/annual_health_check.pdf',
       },
     }),
@@ -173,31 +134,53 @@ async function main() {
 
   console.log('✅ Created documents:', documents.length);
 
-  const schema = await prisma.schema.create({
-    data: {
-      projectId: project.id,
-      name: 'Blood Test Schema',
-      definition: {
-        type: 'object',
-        properties: {
-          patientId: { type: 'string' },
-          sampleDate: { type: 'string', format: 'date' },
-          testResult: { type: 'string' },
-        },
-        required: ['patientId', 'sampleDate', 'testResult'],
-      },
-      version: '1.0.0',
-    },
-  });
+  // Create sample tasks
+  const tasks = await Promise.all(
+    reports.map(async (report, index) => {
+      const existingTask = await prisma.task.findFirst({
+        where: { reportId: report.id },
+      });
 
-  console.log('✅ Created schema:', schema.name);
+      if (existingTask) {
+        console.log('✅ Task already exists for report:', report.name);
+        return existingTask;
+      } else {
+        const taskData: any = {
+          labId: lab.id,
+          projectId: project.id,
+          reportId: report.id,
+          status: index === 0 ? 'COMPLETED' : 'RUNNING',
+          progress: index === 0 ? 100 : 67,
+          model: 'claude-3-5-sonnet',
+        };
 
-  // Create scripts with dataSource field
+        // Add additional fields for completed task
+        if (index === 0) {
+          Object.assign(taskData, {
+            duration: 180, // 3 minutes in seconds
+            completedAt: new Date(Date.now() - 180000),
+          });
+        }
+
+        const newTask = await prisma.task.create({
+          data: taskData,
+        });
+        console.log('✅ Created task:', newTask.id);
+        return newTask;
+      }
+    })
+  );
+
+  console.log('✅ Processed tasks:', tasks.length);
+
+  // Create scripts with dataSourceId
   const scripts = await Promise.all([
     prisma.script.create({
       data: {
+        labId: lab.id,
         projectId: project.id,
         reportId: reports[0].id,
+        taskId: tasks[0].id,
         name: 'Blood Test Extraction Script',
         code: `// Blood Test Extraction Script
 function extractData(document) {
@@ -213,17 +196,16 @@ function extractData(document) {
 }
 
 return extractData(document);`,
-        dataSource: {
-          type: 'pdf',
-          source: 'blood_test_report.pdf',
-          extractionRules: ['patientId', 'sampleDate', 'testResult'],
-        },
+        dataSourceId: documents[0].id,
+        version: 1,
       },
     }),
     prisma.script.create({
       data: {
+        labId: lab.id,
         projectId: project.id,
         reportId: reports[1].id,
+        taskId: tasks[1].id,
         name: 'Annual Health Check Extraction',
         code: `// Annual Health Check Extraction Script
 function extractHealthData(document) {
@@ -237,72 +219,16 @@ function extractHealthData(document) {
 }
 
 return extractHealthData(document);`,
-        dataSource: {
-          type: 'pdf',
-          source: 'annual_health_check.pdf',
-          extractionRules: ['checkDate', 'overallStatus'],
-        },
+        dataSourceId: documents[2].id,
+        version: 1,
       },
     }),
   ]);
 
   console.log('✅ Created scripts:', scripts.length);
 
-  // Create sample tasks
-  const tasks = await Promise.all(
-    reports.map(async (report, index) => {
-      const existingTask = await prisma.task.findFirst({
-        where: { reportId: report.id },
-      });
-
-      if (existingTask) {
-        console.log('✅ Task already exists for report:', report.name);
-        return existingTask;
-      } else {
-        const taskData: any = {
-          labId: lab.id,
-          name: index === 0 ? '2024年血液检测报告批量分析' : '综合检测报告生成任务',
-          reportId: report.id,
-          reportType: index === 0 ? 'blood-test' : 'comprehensive',
-          status: index === 0 ? 'completed' : 'running',
-          progress: index === 0 ? 100 : 67,
-          temperature: 0.7,
-          maxTokens: 4000,
-          model: 'claude-sonnet-4.5',
-        };
-
-        // Add additional fields for completed task
-        if (index === 0) {
-          Object.assign(taskData, {
-            additionalInstructions: '请重点分析异常指标',
-            result: {
-              summary: '血液检测报告分析完成',
-              totalFiles: 7,
-              successful: 7,
-              failed: 0,
-            },
-            duration: 1800000, // 30 minutes
-            completedAt: new Date(Date.now() - 1800000),
-          });
-        } else {
-          Object.assign(taskData, {
-            additionalInstructions: '生成详细的健康建议',
-          });
-        }
-
-        const newTask = await prisma.task.create({
-          data: taskData,
-        });
-        console.log('✅ Created task:', newTask.name);
-        return newTask;
-      }
-    })
-  );
-
-  console.log('✅ Processed tasks:', tasks.length);
-
   // Create task logs for the running task
-  const runningTask = tasks.find(task => task.status === 'running');
+  const runningTask = tasks.find(task => task.status === 'RUNNING');
   if (runningTask) {
     const existingLogs = await prisma.taskLog.findMany({
       where: { taskId: runningTask.id },
@@ -312,27 +238,24 @@ return extractHealthData(document);`,
       await prisma.taskLog.create({
         data: {
           taskId: runningTask.id,
-          type: 'info',
+          level: 'INFO',
           content: '任务开始执行',
-          metadata: { step: 'start' },
         },
       });
 
       await prisma.taskLog.create({
         data: {
           taskId: runningTask.id,
-          type: 'info',
+          level: 'INFO',
           content: '正在处理物料文件',
-          metadata: { step: 'processing', progress: 33 },
         },
       });
 
       await prisma.taskLog.create({
         data: {
           taskId: runningTask.id,
-          type: 'info',
+          level: 'INFO',
           content: '正在生成报告',
-          metadata: { step: 'generating', progress: 67 },
         },
       });
 

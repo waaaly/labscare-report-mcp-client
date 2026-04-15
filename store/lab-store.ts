@@ -49,7 +49,7 @@ export const useLabStore = create<LabState>((set, get) => ({
     try {
       const response = await fetch(`/api/labs/${labId}/knowledge`);
       if (!response.ok) throw new Error('Failed to load knowledge base');
-      const knowledgeBase = await response.json();
+      const knowledgeBase:any = []//await response.json();
       
       set((state) => ({
         currentLab: state.currentLab ? {

@@ -10,13 +10,14 @@ import fs from 'fs';
 
 // ==================== 类型定义 ====================
 interface DocumentJobData {
+  labId: string;
   documentId: string;
   projectId: string;
   fileName: string;
   fileType: string;
   type: string; // MIME type
   tempFilePath: string;
-  reportId?: string;
+  reportId: string;
   size?: number;
 }
 
@@ -83,7 +84,7 @@ async function handleError(
 
 // ==================== 核心处理器 ====================
 async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promise<void> {
-  const { documentId, fileName, projectId, fileType, tempFilePath, reportId, size } = job.data;
+  const { labId, documentId, fileName, projectId, fileType, tempFilePath, reportId, size } = job.data;
   const jobId = job.id;
   const startTime = Date.now();
 
@@ -122,11 +123,11 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
     await prisma.document.create({
       data: {
         id: documentId,
-        projectId,
+        projectId: projectId ,
         reportId: reportId,
         name: fileName,
-        type: fileType,
         url: '',
+        type: fileType,
         size: size || 0,
         status: 'PROCESSING',
       },
@@ -136,9 +137,8 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
 
     // 4. 处理文件
     const isDocFile = fileType.includes('word') || fileType.includes('docx') || fileType.includes('msword');
-    const isTextFile = fileType.includes('text/') || fileType.includes('application/json') || fileType.includes('application/xml') || fileType.includes('text/markdown') || fileType.includes('text/csv');
 
-    let url = '', pdf: string | null = null, coverUrl: string | null = null, content: string | undefined, mdContent: string | undefined;
+    let url = '', pdf: string | null = null, coverUrl: string | null = null;
 
     if (isDocFile) {
       taskLogger.info('检测到 Word 文档，开始转换...');
@@ -170,35 +170,12 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
       const safeName = sanitizeFileName(fileName);
       url = await uploadFile(safeName, buffer, fileType);
 
-      // 处理文本类型文件，读取内容
-      if (isTextFile) {
-        try {
-          const fileContent = buffer.toString('utf8');
-          taskLogger.info(`文本文件内容读取成功，长度: ${fileContent.length} 字符`);
-          
-          // 区分 Markdown 文件和其他文本文件
-          if (fileType.includes('markdown') || fileType.includes('md') || fileName.endsWith('.md')) {
-            mdContent = fileContent;
-          } else {
-            content = fileContent;
-          }
-        } catch (error) {
-          taskLogger.warn(`文本文件内容读取失败: ${error}`);
-          content = undefined;
-        }
-      }
-
       taskLogger.info(`文件上传完成，URL: ${url}`);
     }
 
     // 5. 更新数据库最终状态
     const updateData: any = { status: 'COMPLETED', url, pdf, cover: coverUrl };
-    if (content !== undefined) {
-      updateData.content = content;
-    }
-    if (mdContent !== undefined) {
-      updateData.mdContent = mdContent;
-    }
+
     await prisma.document.update({
       where: { id: documentId },
       data: updateData,

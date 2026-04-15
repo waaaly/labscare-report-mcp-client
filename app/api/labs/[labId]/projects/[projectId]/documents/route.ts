@@ -65,10 +65,10 @@ async function validateFile(file: File): Promise<void> {
 
 export async function POST(
   request: Request,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ labId: string; projectId: string }> }
 ) {
   try {
-    const { projectId } = await context.params;
+    const { labId, projectId } = await context.params;
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
     const reportId = formData.get('reportId') as string;
@@ -90,6 +90,7 @@ export async function POST(
       const documentId = `doc${tempFilePath.match(/([^\\]+)\.[^.]+$/)?.[1]}`;
       // 发送消息到队列
       const taskId = await appendDocumentProcessingTask(
+        labId,
         documentId,
         projectId,
         file.name,
@@ -102,6 +103,7 @@ export async function POST(
       results.push({
         taskId,
         id: documentId,
+        labId: labId,
         projectId: projectId,
         reportId: reportId,
         name: file.name,

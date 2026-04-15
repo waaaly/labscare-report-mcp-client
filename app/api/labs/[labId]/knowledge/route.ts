@@ -17,7 +17,7 @@ export async function GET(
       return NextResponse.json({ error: 'Lab not found' }, { status: 404 });
     }
 
-    const knowledgeBase = lab.knowledgeBase;
+    const knowledgeBase: any[] = [];
 
     return NextResponse.json(knowledgeBase);
   } catch (error) {
@@ -29,29 +29,3 @@ export async function GET(
   }
 }
 
-export async function PUT(
-  request: Request,
-  context: { params: Promise<{ labId: string }> }
-) {
-  try {
-    const { labId } = await context.params;
-    const body = await request.json();
-    const { knowledgeBase } = body;
-
-    const lab = await prisma.lab.update({
-      where: { id: labId },
-      data: {
-        knowledgeBase: knowledgeBase as Prisma.InputJsonValue,
-        updatedAt: new Date(),
-      },
-    });
-
-    return NextResponse.json(lab);
-  } catch (error) {
-    console.error('Failed to update knowledge base:', error);
-    return NextResponse.json(
-      { error: 'Failed to update knowledge base' },
-      { status: 500 }
-    );
-  }
-}

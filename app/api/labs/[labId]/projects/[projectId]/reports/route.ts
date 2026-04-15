@@ -48,10 +48,10 @@ async function validateReportData(data: CreateReportData): Promise<void> {
  */
 export async function POST(
   request: Request,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ labId: string; projectId: string }> }
 ) {
   try {
-    const { projectId } = await context.params;
+    const { labId, projectId } = await context.params;
     const data: CreateReportData = await request.json();
 
     // 验证数据
@@ -61,6 +61,7 @@ export async function POST(
     const report = await prisma.report.create({
       data: {
         projectId,
+        labId: labId,
         name: data.name,
         description: data.description,
       },
@@ -112,7 +113,6 @@ export async function GET(
             url: true,
             size: true,
             type: true,
-            content: true,
             status: true,
             createdAt: true,
           },
@@ -120,7 +120,6 @@ export async function GET(
         tasks: {
           select: {
             id: true,
-            name: true,
             status: true,
             createdAt: true,
           },

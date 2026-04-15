@@ -13,11 +13,7 @@ export async function GET(
       orderBy: {
         createdAt: 'desc',
       },
-      include: {
-        documents: true,
-        schemas: true,
-        scripts: true,
-      },
+
     });
 
     return NextResponse.json(projects);
@@ -43,9 +39,7 @@ export async function POST(
       data: {
         labId,
         name,
-        description,
         limsPid,
-        caseId,
       },
     });
 
