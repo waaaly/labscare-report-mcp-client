@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { useScriptStore } from '@/store/script-store';
+import { useLabStore } from '@/store/lab-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play, Code, Database, FileText, ArrowLeft } from 'lucide-react';
+import { Play, Code, Database, FileText, ArrowLeft, FolderKanban, FileVolume, Activity, Terminal } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import JSONEditor from 'jsoneditor';
 import 'jsoneditor/dist/jsoneditor.min.css';
 
@@ -49,106 +52,22 @@ if (typeof document !== 'undefined') {
   styleElement.innerHTML = customStyles;
   document.head.appendChild(styleElement.firstChild as Node);
 }
-interface ScriptDetails {
-  id: string;
-  name: string;
-  code: string;
-  dataSource: any;
-  projectId: string;
-  reportId: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export default function ScriptDetailPage() {
-  const [isRunning, setIsRunning] = useState(false);
-  const [runResult, setRunResult] = useState<any>(null);
+  const { id } = useParams<{ id: string }>();
+  const { currentLab } = useLabStore();
+  const { currentScript, loadScript, isLoading, error } = useScriptStore();
   const jsonEditorRef = useRef<HTMLDivElement>(null);
   const jsonEditorInstance = useRef<JSONEditor | null>(null);
 
-  // 模拟脚本详情数据
-  const script: ScriptDetails = {
-    id: '1',
-    name: 'Blood Test Extractor',
-    code: `// Blood test results extraction script
-function extractBloodTestResults(data) {
-  const results = {
-    hemoglobin: null,
-    platelets: null,
-    whiteBloodCells: null,
-    redBloodCells: null
-  };
-
-  // Extract hemoglobin
-  const hemoglobinMatch = data.match(/Hemoglobin:\s*(\d+\.\d+)/i);
-  if (hemoglobinMatch) {
-    results.hemoglobin = parseFloat(hemoglobinMatch[1]);
-  }
-
-  // Extract platelets
-  const plateletsMatch = data.match(/Platelets:\s*(\d+)/i);
-  if (plateletsMatch) {
-    results.platelets = parseInt(plateletsMatch[1]);
-  }
-
-  // Extract white blood cells
-  const wbcMatch = data.match(/White Blood Cells:\s*(\d+\.\d+)/i);
-  if (wbcMatch) {
-    results.whiteBloodCells = parseFloat(wbcMatch[1]);
-  }
-
-  // Extract red blood cells
-  const rbcMatch = data.match(/Red Blood Cells:\s*(\d+\.\d+)/i);
-  if (rbcMatch) {
-    results.redBloodCells = parseFloat(rbcMatch[1]);
-  }
-
-  return results;
-}
-
-// Example usage
-const testData = "Patient ID: 12345\nHemoglobin: 14.5 g/dL\nPlatelets: 250000\nWhite Blood Cells: 6.2\nRed Blood Cells: 5.1\n";
-
-console.log(extractBloodTestResults(testData));
-`,
-    dataSource: {
-      "patientId": "12345",
-      "testType": "Complete Blood Count",
-      "sampleId": "SMP-67890",
-      "collectionDate": "2026-04-10",
-      "results": {
-        "hemoglobin": "14.5 g/dL",
-        "platelets": "250,000",
-        "whiteBloodCells": "6.2",
-        "redBloodCells": "5.1"
-      }
-    },
-    projectId: 'project-1',
-    reportId: 'report-1',
-    createdAt: '2026-04-10T10:00:00Z',
-    updatedAt: '2026-04-12T14:30:00Z'
-  };
-
-  const handleRunScript = () => {
-    setIsRunning(true);
-    // 模拟脚本运行
-    setTimeout(() => {
-      setRunResult({
-        "status": "success",
-        "data": {
-          "hemoglobin": 14.5,
-          "platelets": 250000,
-          "whiteBloodCells": 6.2,
-          "redBloodCells": 5.1
-        },
-        "executionTime": "150ms"
-      });
-      setIsRunning(false);
-    }, 1000);
-  };
+  useEffect(() => {
+    if (currentLab && id) {
+      loadScript(currentLab.id, id);
+    }
+  }, [currentLab, id, loadScript]);
 
   useEffect(() => {
-    if (jsonEditorRef.current) {
+    if (jsonEditorRef.current && currentScript?.dataSource) {
       // 销毁之前的实例
       if (jsonEditorInstance.current) {
         jsonEditorInstance.current.destroy();
@@ -165,7 +84,7 @@ console.log(extractBloodTestResults(testData));
       });
 
       // 设置数据
-      editor.set(script.dataSource);
+      editor.set(currentScript.dataSource);
       jsonEditorInstance.current = editor;
     }
 
@@ -175,7 +94,31 @@ console.log(extractBloodTestResults(testData));
         jsonEditorInstance.current.destroy();
       }
     };
-  }, [script.dataSource]);
+  }, [currentScript?.dataSource]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Loading script details...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-red-500">{error}</div>
+      </div>
+    );
+  }
+
+  if (!currentScript) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Script not found</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -198,36 +141,105 @@ console.log(extractBloodTestResults(testData));
       {/* 顶部卡片展示脚本数据和模拟运行按钮 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-2xl">{script.name}</CardTitle>
+          <CardTitle className="text-2xl">{currentScript.name}</CardTitle>
           <Button
-            onClick={handleRunScript}
-            disabled={isRunning}
             className="flex items-center gap-2"
           >
-            {isRunning ? 'Running...' : (
-              <>
-                <Play className="h-4 w-4" />
-                Run Script
-              </>
-            )}
+            <Play className="h-4 w-4" />
+            Run Script
           </Button>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Project ID</p>
-            <p>{script.projectId}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Report ID</p>
-            <p>{script.reportId}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Created At</p>
-            <p>{new Date(script.createdAt).toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Updated At</p>
-            <p>{new Date(script.updatedAt).toLocaleString()}</p>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Project Info */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-[#ECFEFF] rounded-md">
+                  <FolderKanban className="h-5 w-5 text-[#0891B2]" />
+                </div>
+                <h3 className="font-semibold text-[#164E63]">Project</h3>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">{currentScript.project?.name || '-'}</p>
+                {currentScript.project?.limsPid && (
+                  <p className="text-muted-foreground">LMIS ID: {currentScript.project.limsPid}</p>
+                )}
+                {currentScript.project?.createdAt && (
+                  <p className="text-muted-foreground">
+                    Created: {new Date(currentScript.project.createdAt).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Report Info */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-[#ECFEFF] rounded-md">
+                  <FileVolume className="h-5 w-5 text-[#0891B2]" />
+                </div>
+                <h3 className="font-semibold text-[#164E63]">Report</h3>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">{currentScript.report?.name || '-'}</p>
+                {currentScript.report?.description && (
+                  <p className="text-muted-foreground line-clamp-2">{currentScript.report.description}</p>
+                )}
+                {currentScript.report?.createdAt && (
+                  <p className="text-muted-foreground">
+                    Created: {new Date(currentScript.report.createdAt).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Task Info */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-[#ECFEFF] rounded-md">
+                  <Activity className="h-5 w-5 text-[#0891B2]" />
+                </div>
+                <h3 className="font-semibold text-[#164E63]">Task</h3>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">{currentScript.task?.id || '-'}</p>
+                {currentScript.task?.status && (
+                  <p className="text-muted-foreground">Status: {currentScript.task.status}</p>
+                )}
+                {currentScript.task?.model && (
+                  <p className="text-muted-foreground">Model: {currentScript.task.model}</p>
+                )}
+                {currentScript.task?.duration && (
+                  <p className="text-muted-foreground">Duration: {currentScript.task.duration}s</p>
+                )}
+              </div>
+            </div>
+
+            {/* Script Info */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-[#ECFEFF] rounded-md">
+                  <Terminal className="h-5 w-5 text-[#0891B2]" />
+                </div>
+                <h3 className="font-semibold text-[#164E63]">Script</h3>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">Version: {currentScript.version || 1}</p>
+                <p className="text-muted-foreground">
+                  Created: {new Date(currentScript.createdAt).toLocaleString()}
+                </p>
+                {currentScript.updatedAt && (
+                  <p className="text-muted-foreground">
+                    Updated: {new Date(currentScript.updatedAt).toLocaleString()}
+                  </p>
+                )}
+                {currentScript.dataSource && (
+                  <p className="text-muted-foreground">
+                    Data Source: {currentScript.dataSource.name || '-'}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -246,10 +258,12 @@ console.log(extractBloodTestResults(testData));
             <ScrollArea className="h-[600px]">
               <SyntaxHighlighter
                 language="javascript"
+                showLineNumbers={true}
+                showInlineLineNumbers={true}
                 style={vscDarkPlus}
                 className="rounded-md"
               >
-                {script.code}
+                {currentScript.code || ''}
               </SyntaxHighlighter>
             </ScrollArea>
           </CardContent>
@@ -280,15 +294,9 @@ console.log(extractBloodTestResults(testData));
               </TabsContent>
               <TabsContent value="results" className="h-[540px]">
                 <ScrollArea className="h-full">
-                  {runResult ? (
-                    <pre className="bg-muted p-4 rounded-md text-sm font-mono whitespace-pre-wrap">
-                      {JSON.stringify(runResult, null, 2)}
-                    </pre>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      Run the script to see results
-                    </div>
-                  )}
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Run the script to see results
+                  </div>
                 </ScrollArea>
               </TabsContent>
             </Tabs>

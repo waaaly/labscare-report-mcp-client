@@ -1,96 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// 模拟脚本数据
-const scripts = [
-  {
-    id: '1',
-    name: 'Blood Test Extractor',
-    projectId: 'project-1',
-    projectName: 'Cardiology Department',
-    reportId: 'report-1',
-    reportName: 'Annual Health Check',
-    createdAt: '2026-04-10T10:00:00Z',
-    updatedAt: '2026-04-12T14:30:00Z'
-  },
-  {
-    id: '2',
-    name: 'Urine Analysis Script',
-    projectId: 'project-1',
-    projectName: 'Cardiology Department',
-    reportId: 'report-2',
-    reportName: 'Follow-up Visit',
-    createdAt: '2026-04-09T09:15:00Z',
-    updatedAt: '2026-04-09T09:15:00Z'
-  },
-  {
-    id: '3',
-    name: 'Imaging Results Parser',
-    projectId: 'project-2',
-    projectName: 'Radiology Department',
-    reportId: 'report-3',
-    reportName: 'MRI Scan Results',
-    createdAt: '2026-04-08T16:45:00Z',
-    updatedAt: '2026-04-08T16:45:00Z'
-  }
-];
+import prisma from '@/lib/prisma';
 
 export async function GET(request: NextRequest, { params }: { params: { labId: string } }) {
   const { labId } = params;
   const searchParams = request.nextUrl.searchParams;
+  const projectId = searchParams.get('projectId');
+  const reportId = searchParams.get('reportId');
   const searchTerm = searchParams.get('search') || '';
   const sortBy = searchParams.get('sortBy') || 'createdAt';
   const sortOrder = searchParams.get('sortOrder') || 'desc';
   const page = parseInt(searchParams.get('page') || '1');
   const pageSize = parseInt(searchParams.get('pageSize') || '10');
 
-  // 过滤脚本
-  let filteredScripts = scripts.filter(script => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      script.name.toLowerCase().includes(searchLower) ||
-      script.projectName.toLowerCase().includes(searchLower) ||
-      script.reportName.toLowerCase().includes(searchLower)
-    );
-  });
+  try {
+    const where: any = {
+      labId
+    };
 
-  // 排序脚本
-  filteredScripts.sort((a, b) => {
+    if (projectId) {
+      where.projectId = projectId;
+    }
+
+    if (reportId) {
+      where.reportId = reportId;
+    }
+
+    if (searchTerm) {
+      where.OR = [
+        { name: { contains: searchTerm, mode: 'insensitive' } }
+      ];
+    }
+
+    const orderBy: any = {};
     if (sortBy === 'createdAt') {
-      return sortOrder === 'asc' 
-        ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      orderBy.createdAt = sortOrder;
+    } else if (sortBy === 'name') {
+      orderBy.name = sortOrder;
+    } else if (sortBy === 'updatedAt') {
+      orderBy.updatedAt = sortOrder;
+    } else if (sortBy === 'version') {
+      orderBy.version = sortOrder;
+    } else {
+      orderBy.createdAt = sortOrder;
     }
-    if (sortBy === 'name') {
-      return sortOrder === 'asc' 
-        ? a.name.localeCompare(b.name)
-        : b.name.localeCompare(a.name);
-    }
-    if (sortBy === 'projectName') {
-      return sortOrder === 'asc'
-        ? a.projectName.localeCompare(b.projectName)
-        : b.projectName.localeCompare(a.projectName);
-    }
-    if (sortBy === 'reportName') {
-      return sortOrder === 'asc'
-        ? a.reportName.localeCompare(b.reportName)
-        : b.reportName.localeCompare(a.reportName);
-    }
-    return 0;
-  });
 
-  // 分页计算
-  const totalScripts = filteredScripts.length;
-  const totalPages = Math.ceil(totalScripts / pageSize);
-  const startIndex = (page - 1) * pageSize;
-  const paginatedScripts = filteredScripts.slice(startIndex, startIndex + pageSize);
+    const [scripts, totalScripts] = await Promise.all([
+      prisma.script.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+              limsPid: true
+            }
+          },
+          report: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          task: {
+            select: {
+              id: true,
+              status: true,
+              model: true
+            }
+          },
+          dataSource: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              url: true
+            }
+          }
+        }
+      }),
+      prisma.script.count({ where })
+    ]);
 
-  return NextResponse.json({
-    scripts: paginatedScripts,
-    pagination: {
-      total: totalScripts,
-      page,
-      pageSize,
-      totalPages
-    }
-  });
+    const totalPages = Math.ceil(totalScripts / pageSize);
+
+    return NextResponse.json({
+      scripts: scripts.map(script => ({
+        id: script.id,
+        name: script.name,
+        projectName: script.project?.name,
+        reportName: script.report?.name,
+        taskName: script.task?.id,
+        createdAt: script.createdAt.toISOString()
+      })),
+      pagination: {
+        total: totalScripts,
+        page,
+        pageSize,
+        totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching scripts:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch scripts' },
+      { status: 500 }
+    );
+  }
 }
