@@ -174,7 +174,7 @@ async function processor(job: Job<DocumentJobData>, logger: Pino.Logger): Promis
     }
 
     // 5. 更新数据库最终状态
-    const updateData: any = { status: 'COMPLETED', url, pdf, cover: coverUrl };
+    const updateData: any = { status: 'SUCCESS', url, pdf, cover: coverUrl };
 
     await prisma.document.update({
       where: { id: documentId },

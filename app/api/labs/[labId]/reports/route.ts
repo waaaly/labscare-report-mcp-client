@@ -34,7 +34,6 @@ export async function GET(
             name: true,
             url: true,
             type: true,
-            content: true,
             size: true,
             status: true,
             createdAt: true,
@@ -43,7 +42,6 @@ export async function GET(
         tasks: {
           select: {
             id: true,
-            name: true,
             status: true,
             createdAt: true,
           },

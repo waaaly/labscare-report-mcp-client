@@ -29,6 +29,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLabStore } from '@/store/lab-store';
+import { useProjectStore } from '@/store/project-store';
 
 // Types
 interface Material {
@@ -78,6 +79,7 @@ interface Report {
 export default function NewBatchTaskPage() {
   const router = useRouter();
   const { currentLab } = useLabStore();
+  const { currentProject,  } = useProjectStore();
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
@@ -257,9 +259,10 @@ export default function NewBatchTaskPage() {
       const tasks = reports
         .filter(r => selectedReports.has(r.id))
         .map(report => ({
+          labId: currentLab?.id || '',
+          projectId: report?.project?.id || '',
           reportId: report.id,
           reportName: report.name,
-          labId: currentLab?.id,
           ...taskConfigs[report.id],
         }));
 

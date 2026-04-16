@@ -18,13 +18,12 @@ import {
 import { getRedisConfig, TASK_PROCESSOR_WORKER_NAME } from "./client";
 import Pino from 'pino';
 import prisma from "../prisma";
-import { fetchJsonContent } from "../minio/client";
-
+import { Task, TaskStatus } from '@prisma/client';
 // ==================== 类型定义 ====================
 
 export interface TaskProcessData {
   taskId: string;
-  name: string;
+  labId: string;
   reportId: string;
   reportName: string;
   additionalInstructions: string;
@@ -81,7 +80,7 @@ async function handleError(
 /** 安全发布流式消息，防止单个 chunk 失败导致整个任务崩溃 */
 async function safePublish(taskId: string, data: any, logger: Pino.Logger): Promise<void> {
   try {
-    logger.info(`[Task Worker]: 发布${ taskId}流消息,${JSON.stringify(data)}`);
+    logger.info(`[Task Worker]: 发布${taskId}流消息,${JSON.stringify(data)}`);
     await publishStreamChunk(taskId, data);
   } catch (err) {
     logger.warn({ error: err, dataType: data.type }, `发布流消息失败，已跳过该 chunk`);
@@ -97,7 +96,7 @@ async function publishProgress(taskId: string, progress: number, logger: Pino.Lo
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /** 更新 Task 状态和进度 */
-async function updateTaskProgress(taskId: string, progress: number, status: string): Promise<void> {
+async function updateTaskProgress(taskId: string, progress: number, status: TaskStatus): Promise<void> {
   await prisma.task.update({
     where: { id: taskId },
     data: { progress, status },
@@ -105,28 +104,27 @@ async function updateTaskProgress(taskId: string, progress: number, status: stri
 }
 
 /** 创建 TaskLog 记录 */
-async function createTaskLog(taskId: string, type: string, content: string, metadata?: any): Promise<void> {
+async function createTaskLog(taskId: string, level: string, content: string, metadata?: any): Promise<void> {
   await prisma.taskLog.create({
-    data: { taskId, type, content, metadata },
+    data: { taskId, level, content },
   });
 }
 
-/** 从 documentUrls 中提取 JSON 数据源 */
-async function extractJsonDataSource(documentUrls: string[], logger: Pino.Logger): Promise<any> {
-  const jsonUrls = documentUrls.filter(url => url.toLowerCase().endsWith('.json'));
-  if (jsonUrls.length === 0) return { sources: [], extractedAt: new Date().toISOString() };
 
-  const sources = await Promise.all(
-    jsonUrls.map(async url => {
-      const content = await fetchJsonContent(url);
-      if (!content) {
-        logger.warn({ url }, '获取 JSON 内容失败');
-      }
-      return { url, content, fetchedAt: new Date().toISOString() };
-    })
-  );
+function getJsonUrl(documentUrls: string[]): string | null {
+  return documentUrls.find(url => url.toLowerCase().endsWith('.json')) || null;
+}
 
-  return { sources, extractedAt: new Date().toISOString() };
+async function getJsonDataSourceId(jsonUrl: string | null): Promise<string | null> {
+  if (!jsonUrl) return null;
+  try {
+    const document = await prisma.document.findFirst({
+      where: { url: jsonUrl },
+    });
+    return document?.id || null;
+  } catch (error) {
+    return null;
+  }
 }
 
 /**
@@ -134,12 +132,23 @@ async function extractJsonDataSource(documentUrls: string[], logger: Pino.Logger
  * 同步更新 Task、TaskLog、Script 表
  */
 async function simulateLLMCall(
-  taskId: string,
-  reportId: string,
-  prompt: string,
-  documentUrls: string[],
-  logger: Pino.Logger
+  { taskId,
+    reportId,
+    labId,
+    reportName,
+    prompt,
+    documentUrls,
+    logger }: {
+      taskId: string,
+      labId: string,
+      reportId: string,
+      reportName: string,
+      prompt: string,
+      documentUrls: string[],
+      logger: Pino.Logger
+    }
 ): Promise<void> {
+
   const taskLogger = logger.child({ taskId, function: 'simulateLLMCall' });
   const startTime = Date.now();
 
@@ -147,81 +156,89 @@ async function simulateLLMCall(
     taskLogger.info(`开始模拟 LLM 调用流程`);
 
     // 更新 Task 状态为 running
-    await updateTaskProgress(taskId, 0, 'running');
+    await updateTaskProgress(taskId, 0, TaskStatus.RUNNING);
     await publishProgress(taskId, 0, taskLogger);
 
     // 步骤 1: 读取模板占位符
-    await updateTaskProgress(taskId, 10, 'running');
+    await updateTaskProgress(taskId, 10, TaskStatus.RUNNING);
     await publishProgress(taskId, 10, taskLogger);
     await safePublish(taskId, { type: "thought", text: "正在读取模板占位符..." }, taskLogger);
-    await createTaskLog(taskId, 'info', '正在读取模板占位符...', { step: 1, progress: 10 });
-    await delay(Math.random() * 30000 + 30000);
+    await createTaskLog(taskId, 'INFO', '正在读取模板占位符...', { step: 1, progress: 10 });
+    await delay(Math.random() * 30000);
 
     // 步骤 2: 分析报表脚本需求
-    await updateTaskProgress(taskId, 25, 'running');
+    await updateTaskProgress(taskId, 25, TaskStatus.RUNNING);
     await publishProgress(taskId, 25, taskLogger);
     await safePublish(taskId, { type: "thought", text: "正在分析报表脚本需求..." }, taskLogger);
-    await createTaskLog(taskId, 'info', '正在分析报表脚本需求...', { step: 2, progress: 25 });
-    await delay(Math.random() * 60000 + 60000);
+    await createTaskLog(taskId, 'INFO', '正在分析报表脚本需求...', { step: 2, progress: 25 });
+    await delay(Math.random() * 60000);
 
     // 步骤 3: 调用工具获取规范
-    await updateTaskProgress(taskId, 40, 'running');
+    await updateTaskProgress(taskId, 40, TaskStatus.RUNNING);
     await publishProgress(taskId, 40, taskLogger);
     await safePublish(taskId, {
       type: "tool_call",
       tool: "get_labscare_script_rules",
       message: "正在调用: get_labscare_script_rules...",
     }, taskLogger);
-    await createTaskLog(taskId, 'tool_call', '调用工具: get_labscare_script_rules', { step: 3, progress: 40 });
-    await delay(Math.random() * 30000 + 30000);
+    await createTaskLog(taskId, 'INFO', '调用工具: get_labscare_script_rules', { step: 3, progress: 40 });
+    await delay(Math.random() * 30000);
 
     // 步骤 4: 分析规范内容
-    await updateTaskProgress(taskId, 50, 'running');
+    await updateTaskProgress(taskId, 50, TaskStatus.RUNNING);
     await publishProgress(taskId, 50, taskLogger);
     await safePublish(taskId, { type: "thought", text: "已获取 LabsCare 报表脚本规范，开始分析规范内容..." }, taskLogger);
-    await createTaskLog(taskId, 'info', '已获取 LabsCare 报表脚本规范，开始分析规范内容...', { step: 4, progress: 50 });
-    await delay(Math.random() * 60000 + 60000);
+    await createTaskLog(taskId, 'INFO', '已获取 LabsCare 报表脚本规范，开始分析规范内容...', { step: 4, progress: 50 });
+    await delay(Math.random() * 60000);
 
     // 步骤 5: 分析报告模板
-    await updateTaskProgress(taskId, 60, 'running');
+    await updateTaskProgress(taskId, 60, TaskStatus.RUNNING);
     await publishProgress(taskId, 60, taskLogger);
     await safePublish(taskId, { type: "thought", text: "正在分析报告模板和占位符..." }, taskLogger);
-    await createTaskLog(taskId, 'info', '正在分析报告模板和占位符...', { step: 5, progress: 60 });
-    await delay(Math.random() * 30000 + 30000);
+    await createTaskLog(taskId, 'INFO', '正在分析报告模板和占位符...', { step: 5, progress: 60 });
+    await delay(Math.random() * 30000);
 
     // 步骤 6: 生成报表脚本
-    await updateTaskProgress(taskId, 70, 'running');
+    await updateTaskProgress(taskId, 70, TaskStatus.RUNNING);
     await publishProgress(taskId, 70, taskLogger);
     await safePublish(taskId, { type: "thought", text: "开始生成报表脚本..." }, taskLogger);
-    await createTaskLog(taskId, 'info', '开始生成报表脚本...', { step: 6, progress: 70 });
-    await delay(Math.random() * 60000 + 60000);
+    await createTaskLog(taskId, 'INFO', '开始生成报表脚本...', { step: 6, progress: 70 });
+    await delay(Math.random() * 60000);
 
     const mockScript = `
-// 报表脚本 - 基于模拟生成
-const reportScript = {
-  name: "Sample Report Script",
-  version: "1.0.0",
-  description: "生成实验室报告",
-  fields: [
-    { name: "patientId", type: "string", source: "patient.id", required: true },
-    { name: "patientName", type: "string", source: "patient.name", required: true },
-    { name: "reportDate", type: "date", source: "metadata.reportDate", format: "YYYY-MM-DD" },
-    { name: "labName", type: "string", source: "metadata.labName" }
-  ],
-  generate: function(data) {
-    return {
-      patientId: data.patient.id,
-      patientName: data.patient.name,
-      reportDate: data.metadata.reportDate,
-      labName: data.metadata.labName
-    };
-  }
-};
-module.exports = reportScript;
-`;
+      //javascript
+      load("/tools.js")
+      set('exceptionMsgLengthLimit', '10000');
+
+      var helper = get("labscareHelper");
+      var samples = helper.getProjectSamples(projectId);
+      samples = JSON.stringify(samples);
+      samples = JSON.parse(samples.replace(/null:/g,'"null":'))
+      var procedures = helper.getProjectData(projectId);
+      var templateId = '';
+      var processId = '';
+      for(var i in procedures){
+          if (i.indexOf('310') === 0) {
+              processId = i
+          }
+      }
+      var procedure = procedures.get(processId);
+      if (procedure) {
+          for(var i in procedure.processes){
+              if (i.indexOf('314') === 0) {
+                  templateld = i
+              }
+          }
+      }
+      var samplesJs = JSON.parse(JSON.stringify(samples))
+      var form = procedure.get('processes').get(templateld).get('form');
+      var formJs = JSON.parse(JSON.stringify(form));
+      var outputData = {"sample":samplesJs,"form":formJs};
+      outputData
+      `;
 
     const chunks = mockScript.split('\n');
-    const chunkDelay = Math.floor((Math.random() * 30000 + 30000) / Math.max(chunks.length, 1));
+    const chunkDelay = Math.floor((Math.random() * 30000) / Math.max(chunks.length, 1));
     const progressStep = 20 / Math.max(chunks.length, 1);
     let currentProgress = 70;
 
@@ -230,7 +247,7 @@ module.exports = reportScript;
       if (chunk.trim()) {
         currentProgress += progressStep;
         if (currentProgress <= 90) {
-          await updateTaskProgress(taskId, Math.round(currentProgress), 'running');
+          await updateTaskProgress(taskId, Math.round(currentProgress), TaskStatus.RUNNING);
           await publishProgress(taskId, Math.round(currentProgress), taskLogger);
         }
         await safePublish(taskId, { type: "content", text: chunk + '\n' }, taskLogger);
@@ -239,35 +256,41 @@ module.exports = reportScript;
     }
 
     // 步骤 7: 检查生成的脚本
-    await updateTaskProgress(taskId, 90, 'running');
+    await updateTaskProgress(taskId, 90, TaskStatus.RUNNING);
     await publishProgress(taskId, 90, taskLogger);
     await safePublish(taskId, { type: "thought", text: "正在检查生成的脚本..." }, taskLogger);
-    await createTaskLog(taskId, 'info', '正在检查生成的脚本...', { step: 7, progress: 90 });
-    await delay(Math.random() * 30000 + 30000);
+    await createTaskLog(taskId, 'INFO', '正在检查生成的脚本...', { step: 7, progress: 90 });
+    await delay(Math.random() * 30000);
 
     // 步骤 8: 完成
-    await updateTaskProgress(taskId, 95, 'running');
+    await updateTaskProgress(taskId, 95, TaskStatus.RUNNING);
     await publishProgress(taskId, 95, taskLogger);
     await safePublish(taskId, { type: "thought", text: "脚本生成完成，准备返回结果..." }, taskLogger);
     await delay(5000);
 
-    // 提取 JSON 数据源
-    const dataSource = await extractJsonDataSource(documentUrls, taskLogger);
-
-    // 创建 Script 记录
+    
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: { report: { select: { projectId: true } } },
     });
 
     if (task?.report) {
+      // 这里简化处理，实际应该根据 documentUrls 找到对应的 Document ID
+      const dataSourceId = await getJsonDataSourceId(getJsonUrl(documentUrls));
+      if (!dataSourceId) {
+        taskLogger.warn('未找到 JSON 数据源 ID');
+        throw new Error('未找到 JSON 数据源 ID');
+      }
+      // 创建 Script 记录
       await prisma.script.create({
         data: {
+          labId, 
           projectId: task.report.projectId,
           reportId,
-          name: `Script-${taskId}`,
+          taskId,
+          name: `${reportName}-Script-${taskId}`,
           code: mockScript,
-          dataSource,
+          dataSourceId,
         },
       });
       taskLogger.info('Script 记录已创建');
@@ -278,11 +301,10 @@ module.exports = reportScript;
     await prisma.task.update({
       where: { id: taskId },
       data: {
-        status: 'completed',
+        status: TaskStatus.COMPLETED,
         progress: 100,
         duration,
         completedAt: new Date(),
-        result: { success: true, message: '任务完成' },
       },
     });
 
@@ -297,12 +319,11 @@ module.exports = reportScript;
     await prisma.task.update({
       where: { id: taskId },
       data: {
-        status: 'failed',
-        error: (error as Error).message,
+        status: TaskStatus.FAILED,
       },
-    }).catch(() => {});
+    }).catch(() => { });
 
-    await createTaskLog(taskId, 'error', `任务执行失败: ${(error as Error).message}`).catch(() => {});
+    await createTaskLog(taskId, 'error', `任务执行失败: ${(error as Error).message}`).catch(() => { });
 
     throw error;
   }
@@ -354,7 +375,7 @@ async function executeRealAgent(
   for await (const event of eventStream) {
     try {
       totalChunks++;
-      
+
       if (Array.isArray(event) && event.length === 2) {
         const [streamMode, chunk] = event;
 
@@ -390,7 +411,7 @@ async function executeRealAgent(
             }, taskLogger);
 
             tokensUsed += Math.ceil(messageChunk.content.length / 4);
-            
+
             // 根据处理的内容长度更新进度
             processedChunks++;
             const contentProgress = progressStep * 1.5 * (processedChunks / Math.max(totalChunks, 1));
@@ -428,7 +449,7 @@ async function executeRealAgent(
 
   // 可选：清理 agent 资源
   if (agent && typeof (agent as any).cleanup === 'function') {
-    await (agent as any).cleanup().catch(() => {});
+    await (agent as any).cleanup().catch(() => { });
   }
 
   return { tokensUsed };
@@ -497,7 +518,7 @@ async function buildMessages(
 // ==================== 核心处理器 ====================
 
 async function processor(job: Job<TaskProcessData>, logger: Pino.Logger): Promise<TaskProcessResult> {
-  const { taskId, name, reportId, reportName, additionalInstructions, documentUrls } = job.data;
+  const { taskId, labId, reportId, reportName, additionalInstructions, documentUrls } = job.data;
   const jobId = job.id!;
   const startTime = Date.now();
 
@@ -518,7 +539,7 @@ async function processor(job: Job<TaskProcessData>, logger: Pino.Logger): Promis
 
     if (useMock) {
       taskLogger.info(`使用模拟 LLM 模式`);
-      await simulateLLMCall(taskId, reportId, additionalInstructions || name, documentUrls, taskLogger);
+      await simulateLLMCall({labId, taskId, reportId, reportName, prompt: additionalInstructions, documentUrls, logger: taskLogger });
       tokensUsed = 123;
     } else {
       taskLogger.info(`使用真实 LLM Agent 模式`);
@@ -555,7 +576,7 @@ async function processor(job: Job<TaskProcessData>, logger: Pino.Logger): Promis
     const duration = Date.now() - startTime;
     taskLogger.error(`❌ 任务处理失败，耗时 ${duration}s | 错误: ${error.message}`);
 
-    await handleError(taskId, error, taskLogger, '任务处理异常').catch(() => {});
+    await handleError(taskId, error, taskLogger, '任务处理异常').catch(() => { });
 
     throw error; // 让 BullMQ 标记为 failed，支持自动重试
   }

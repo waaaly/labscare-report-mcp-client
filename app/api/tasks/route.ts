@@ -10,20 +10,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 import { getReportQueue } from '@/lib/redis/client';
 import prisma from '@/lib/prisma';
-
+import { Task,TaskStatus } from '@prisma/client';
 // ===== 类型定义 =====
 
-export interface TaskItem {
-  reportId: string;
-  reportName: string;
-  labId: string;
-  taskName: string;
-  additionalInstructions: string;
-  documentUrls: string[];
-  advancedParams: {
-    temperature: number;
-    maxTokens: number;
-    model: string;
+export type TaskItem = Pick<Task, 'id' | 'labId' | 'reportId' | 'projectId'| 'status' | 'progress'> & {
+  taskName?: string;
+  reportName?: string;
+  additionalInstructions?: string;
+  documentUrls?: string[];
+  advancedParams?: {
+    temperature?: number;
+    maxTokens?: number;
+    model?: string;
   };
 }
 
@@ -33,7 +31,6 @@ export interface CreateTaskRequest {
 
 export interface TaskResponse {
   id: string;
-  name: string;
   status: 'waiting' | 'active' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   reportId: string;
@@ -80,16 +77,11 @@ export async function GET(request: NextRequest) {
 
     const tasks: TaskResponse[] = dbTasks.map(task => ({
       id: task.id,
-      name: task.name,
       status: task.status as TaskResponse['status'],
       progress: task.progress,
       reportId: task.reportId,
       reportName: task.report?.name,
       labId: task.labId,
-      additionalInstructions: task.additionalInstructions || undefined,
-      temperature: task.temperature ? Number(task.temperature) : undefined,
-      maxTokens: task.maxTokens || undefined,
-      model: task.model || undefined,
       createdAt: task.createdAt.getTime(),
       completedAt: task.completedAt?.getTime(),
     }));
@@ -122,23 +114,16 @@ export async function POST(request: NextRequest) {
 
     await prisma.$transaction(async (tx) => {
       for (const taskItem of body.tasks) {
-        if (!taskItem.taskName || !taskItem.taskName.trim()) {
-          throw new Error(`Task name is required for report: ${taskItem.reportName}`);
-        }
 
         const taskId = crypto.randomUUID();
 
-        const taskData = {
+        const taskData: TaskItem = {
           id: taskId,
           labId: taskItem.labId,
-          name: taskItem.taskName,
           reportId: taskItem.reportId,
-          additionalInstructions: taskItem.additionalInstructions,
-          status: 'waiting',
+          projectId: taskItem.projectId,
+          status: TaskStatus.PENDING,
           progress: 0,
-          temperature: taskItem.advancedParams.temperature,
-          maxTokens: taskItem.advancedParams.maxTokens,
-          model: taskItem.advancedParams.model,
         };
 
         await tx.task.create({
@@ -147,7 +132,7 @@ export async function POST(request: NextRequest) {
 
         const jobData = {
           taskId,
-          name: taskItem.taskName,
+          labId: taskItem.labId,
           reportId: taskItem.reportId,
           reportName: taskItem.reportName,
           additionalInstructions: taskItem.additionalInstructions,
@@ -175,20 +160,16 @@ export async function POST(request: NextRequest) {
 
         createdTasks.push({
           id: taskId,
-          name: taskItem.taskName,
           status: 'waiting',
           progress: 0,
           reportId: taskItem.reportId,
           reportName: taskItem.reportName,
           labId: taskItem.labId,
           additionalInstructions: taskItem.additionalInstructions,
-          temperature: taskItem.advancedParams.temperature,
-          maxTokens: taskItem.advancedParams.maxTokens,
-          model: taskItem.advancedParams.model,
           createdAt: Date.now(),
         });
 
-        logger.info({ taskId, taskName: taskItem.taskName, reportId: taskItem.reportId }, '[Tasks API] 任务已创建');
+        logger.info({ taskId,projectId: taskItem.projectId, reportName: taskItem.reportName }, '[Tasks API] 任务已创建');
       }
     });
 

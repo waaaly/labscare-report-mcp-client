@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: NextRequest, { params }: { params: { labId: string; scriptId: string } }) {
-  const { labId, scriptId } = params;
+export async function GET(request: NextRequest, context: { params: Promise<{ labId: string; scriptId: string }> }) {
 
   try {
+    const { labId,scriptId } = await context.params;
     const script = await prisma.script.findFirst({
       where: {
         id: scriptId,

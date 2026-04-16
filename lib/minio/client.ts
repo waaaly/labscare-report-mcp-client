@@ -1,4 +1,5 @@
 import { Client, ClientOptions } from 'minio';
+import { logger } from '../logger';
 
 export function getMinioConfig(): ClientOptions {
   var config: ClientOptions = {
@@ -16,7 +17,7 @@ export function getMinioConfig(): ClientOptions {
 }
 
 export function getMinioPublicHost(): string {
-   if (!process.env.MINIO_ENDPOINT) {
+  if (!process.env.MINIO_ENDPOINT) {
     return 'http://localhost:9001';
   } else {
     return process.env.MINIO_ENDPOINT;
@@ -99,17 +100,44 @@ export async function getFileUrl(fileName: string): Promise<string> {
   return `${process.env.MINIO_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
 }
 
-/** 从 MinIO 获取 JSON 文件内容 */
-export async function fetchJsonContent(jsonUrl: string): Promise<any | null> {
-  const minioHost = getMinioPublicHost();
-  const fullUrl = jsonUrl.startsWith('http') ? jsonUrl : `${minioHost}${jsonUrl}`;
-
+/** 
+ * 服务端函数：使用 MinIO SDK 获取并解析 JSON 
+ * 必须在 Server Component, API Route 或 Server Action 中运行
+ * @param fullPath - MinIO 存储桶中的对象完整路径，格式为 /bucketName/objectName
+ * @returns 解析后的 JSON 对象
+ */
+export async function getJsonFromMinio(fullPath: string) {
   try {
-    const response = await fetch(fullUrl);
-    if (!response.ok) return null;
-    return await response.json();
-  } catch {
-    return null;
+    const [bucketName, ...objectParts] = fullPath.replace(/^\/|\/$/g, "").split("/");
+    const objectName = objectParts.join("/");
+    // 1. 获取对象流
+    const dataStream = await minioClient.getObject(bucketName, objectName);
+
+    let content = '';
+
+    // 2. 监听流数据并拼接字符串
+    return new Promise((resolve, reject) => {
+      dataStream.on('data', (chunk) => {
+        content += chunk.toString(); // 将 Buffer 转换为字符串并追加
+      });
+
+      dataStream.on('end', () => {
+        try {
+          // 3. 传输完成后解析 JSON
+          const json = JSON.parse(content);
+          resolve(json);
+        } catch (e: any) {
+          reject(new Error('JSON 解析失败: ' + e.message));
+        }
+      });
+
+      dataStream.on('error', (err) => {
+        reject(err);
+      });
+    });
+  } catch (error) {
+    console.error('获取 MinIO 对象失败:', error);
+    throw error;
   }
 }
 

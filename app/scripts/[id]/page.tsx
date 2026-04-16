@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play, Code, Database, FileText, ArrowLeft, FolderKanban, FileArchive, Activity, Terminal } from 'lucide-react';
+import { Play, Code, Database, FileText, ArrowLeft, FolderKanban, FileArchive, Activity, Terminal, FileClock } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import JSONEditor from 'jsoneditor';
 import 'jsoneditor/dist/jsoneditor.min.css';
-
+import { useMinioResource } from '@/hooks/useMinioResource';
 // 自定义 JSONEditor 样式
 const customStyles = `
   <style>
@@ -59,9 +59,11 @@ export default function ScriptDetailPage() {
   const { currentScript, loadScript, isLoading, error } = useScriptStore();
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<any>(null);
+  const [runLogs, setRunLogs] = useState<string[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const jsonEditorRef = useRef<HTMLDivElement>(null);
   const jsonEditorInstance = useRef<JSONEditor | null>(null);
+  const { data, loading, error: minioError } = useMinioResource(currentScript?.dataSource?.url || null);
 
   useEffect(() => {
     if (currentLab && id) {
@@ -70,7 +72,7 @@ export default function ScriptDetailPage() {
   }, [currentLab, id, loadScript]);
 
   useEffect(() => {
-    if (jsonEditorRef.current && currentScript?.dataSource) {
+    if (!loading && jsonEditorRef.current && currentScript?.dataSource) {
       // 销毁之前的实例
       if (jsonEditorInstance.current) {
         jsonEditorInstance.current.destroy();
@@ -80,14 +82,17 @@ export default function ScriptDetailPage() {
       const editor = new JSONEditor(jsonEditorRef.current, {
         mode: 'view',
         indentation: 2,
-        theme: 'light',
-        statusBar: false,
-        search: false,
-        navigationBar: false
+        theme: 'dark',
+        statusBar: true,
+        search: true,
+        navigationBar: true
       });
+      if (!minioError) {
+        editor.set(data);
+      } else {
+        editor.set({});
+      }
 
-      // 设置数据
-      editor.set(currentScript.dataSource);
       jsonEditorInstance.current = editor;
     }
 
@@ -97,13 +102,14 @@ export default function ScriptDetailPage() {
         jsonEditorInstance.current.destroy();
       }
     };
-  }, [currentScript?.dataSource]);
+  }, [loading, currentScript?.dataSource]);
 
   const handleRunScript = async () => {
     if (!currentScript) return;
 
     setIsRunning(true);
     setRunResult(null);
+    setRunLogs([]);
     setRunError(null);
 
     try {
@@ -114,8 +120,7 @@ export default function ScriptDetailPage() {
         },
         body: JSON.stringify({
           id: currentScript.id,
-          dataSourceId: currentScript.dataSourceId,
-          projectId: currentScript.projectId
+          dataSourceUrl: currentScript.dataSource?.url || '',
         })
       });
 
@@ -123,6 +128,7 @@ export default function ScriptDetailPage() {
 
       if (result.success) {
         setRunResult(result.data);
+        setRunLogs(result.logs || []);
       } else {
         setRunError(result.error || 'Failed to run script');
       }
@@ -331,6 +337,10 @@ export default function ScriptDetailPage() {
                   <FileText className="h-4 w-4" />
                   Run Results
                 </TabsTrigger>
+                <TabsTrigger value="logs" className="flex items-center gap-1">
+                  <FileClock className="h-4 w-4" />
+                  Logs
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="data" className="h-[540px]">
                 <div ref={jsonEditorRef} className="w-full h-full"></div>
@@ -352,6 +362,27 @@ export default function ScriptDetailPage() {
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                       Run the script to see results
+                    </div>
+                  )}
+                </ScrollArea>
+              </TabsContent>
+              <TabsContent value="logs" className="h-[540px]">
+                <ScrollArea className="h-full">
+                  {runLogs.length > 0 ? (
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
+                      <h4 className="font-medium mb-3 text-[#164E63]">Execution Logs</h4>
+                      <div className="space-y-2">
+                        {runLogs.map((log, index) => (
+                          <div key={index} className="flex items-start gap-2">
+                            <span className="text-[#0891B2] font-mono text-xs mt-1">[{index + 1}]</span>
+                            <span className="text-sm">{log}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      No logs available
                     </div>
                   )}
                 </ScrollArea>

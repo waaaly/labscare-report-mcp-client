@@ -156,17 +156,6 @@ export default function TaskDetailPage() {
       };
 
       // ==================== 核心修改部分 ====================
-      // 监听所有事件，包括带 event 字段的消息
-      eventSource.addEventListener('message', (event) => {
-        try {
-          const chunk = JSON.parse(event.data);
-          console.log('Received message event:', chunk);
-          processChunk(chunk);
-        } catch (e) {
-          console.error('Failed to parse message event:', e, event.data);
-        }
-      });
-
       // 监听带特定 event 字段的消息
       eventSource.addEventListener('connected', (event) => {
         try {
@@ -305,13 +294,31 @@ export default function TaskDetailPage() {
 
           // 最终输出内容（通常是生成的脚本、报告等）
           case 'content':
-            setLogs(prev => [...prev, {
-              id: crypto.randomUUID(),
-              timestamp: new Date(),
-              type: 'content',
-              content: chunk.text || '',
-              metadata: chunk,
-            }]);
+            setLogs(prev => {
+              // 查找最后一条content类型的消息
+              const lastContentMessage = prev.find((log: Message) => log.type === 'content');
+              const lastContentIndex = lastContentMessage ? prev.lastIndexOf(lastContentMessage) : -1;
+              
+              if (lastContentIndex >= 0) {
+                // 如果存在content消息，拼接内容
+                const newLogs = [...prev];
+                newLogs[lastContentIndex] = {
+                  ...newLogs[lastContentIndex],
+                  content: newLogs[lastContentIndex].content + (chunk.text || ''),
+                  timestamp: new Date(), // 更新时间戳
+                };
+                return newLogs;
+              } else {
+                // 不存在content消息，创建新的
+                return [...prev, {
+                  id: crypto.randomUUID(),
+                  timestamp: new Date(),
+                  type: 'content',
+                  content: chunk.text || '',
+                  metadata: chunk,
+                }];
+              }
+            });
             break;
 
           case 'tool_call':
@@ -339,13 +346,13 @@ export default function TaskDetailPage() {
               ...prev,
               progress: chunk.progress || prev.progress
             } : null);
-            setLogs(prev => [...prev, {
-              id: crypto.randomUUID(),
-              timestamp: new Date(),
-              type: 'progress',
-              content: `进度更新: ${chunk.progress}%`,
-              metadata: { progress: chunk.progress },
-            }]);
+            // setLogs(prev => [...prev, {
+            //   id: crypto.randomUUID(),
+            //   timestamp: new Date(),
+            //   type: 'progress',
+            //   content: `进度更新: ${chunk.progress}%`,
+            //   metadata: { progress: chunk.progress },
+            // }]);
             break;
 
           case 'metrics':
@@ -740,7 +747,8 @@ export default function TaskDetailPage() {
                 <CardContent className="p-0 h-full">
                   <ScrollArea className="h-full bg-zinc-950">
                     <div ref={scrollRef} className="p-4 space-y-3 min-h-full">
-                      {logs.map((log) => (
+                      {/* 非content类型消息 */}
+                      {logs.filter(log => log.type !== 'content').map((log) => (
                         <div
                           key={log.id}
                           className={cn(
@@ -751,6 +759,40 @@ export default function TaskDetailPage() {
                           <div className="flex items-start gap-3">
                             <div className="flex-shrink-0 mt-0.5">
                               {getMessageIcon(log.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs text-gray-400 font-mono">
+                                  {log.timestamp.toLocaleTimeString('zh-CN')}
+                                </span>
+                                <Badge variant="secondary" className="text-xs">
+                                  {log.type}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-gray-200 whitespace-pre-wrap break-words">
+                                {log.content}
+                              </p>
+                              {log.metadata && (
+                                <div className="mt-2 p-2 rounded bg-zinc-900 border border-zinc-800">
+                                  <pre className="text-xs text-gray-400 font-mono overflow-auto">
+                                    {JSON.stringify(log.metadata, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* content类型消息 */}
+                      {logs.filter(log => log.type === 'content').map((log) => (
+                        <div
+                          key={log.id}
+                          className="rounded-lg border p-4 transition-all duration-200 bg-blue-950/50 border-blue-800/50"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 mt-0.5">
+                              <Activity className="h-4 w-4 text-blue-400" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-2">
