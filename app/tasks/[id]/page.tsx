@@ -88,13 +88,10 @@ export default function TaskDetailPage() {
   useEffect(() => {
     loadTaskDetail();
 
-    // Connect to SSE stream
-    connectToStream();
+    // Connect to SSE stream and get cleanup function
+    const cleanup = connectToStream();
 
-    return () => {
-      // Clean up SSE connection
-      setIsConnected(false);
-    };
+    return cleanup;
   }, [taskId]);
 
   useEffect(() => {

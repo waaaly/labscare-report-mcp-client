@@ -71,8 +71,11 @@ export default function ScriptDetailPage() {
     }
   }, [currentLab, id, loadScript]);
 
+  // 用于跟踪当前激活的tab
+  const [activeTab, setActiveTab] = useState('data');
+
   useEffect(() => {
-    if (!loading && jsonEditorRef.current && currentScript?.dataSource) {
+    if (activeTab === 'data' && !loading && jsonEditorRef.current && currentScript?.dataSource) {
       // 销毁之前的实例
       if (jsonEditorInstance.current) {
         jsonEditorInstance.current.destroy();
@@ -95,14 +98,15 @@ export default function ScriptDetailPage() {
 
       jsonEditorInstance.current = editor;
     }
-
+    console.log('jsonEditorRef.current', data);
     // 清理函数
     return () => {
       if (jsonEditorInstance.current) {
         jsonEditorInstance.current.destroy();
+        jsonEditorInstance.current = null;
       }
     };
-  }, [loading, currentScript?.dataSource]);
+  }, [activeTab, loading, currentScript?.dataSource?.url, jsonEditorRef.current, data, minioError]);
 
   const handleRunScript = async () => {
     if (!currentScript) return;
@@ -327,7 +331,7 @@ export default function ScriptDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="data">
+            <Tabs defaultValue="data" onValueChange={setActiveTab}>
               <TabsList className="mb-4">
                 <TabsTrigger value="data" className="flex items-center gap-1">
                   <Database className="h-4 w-4" />

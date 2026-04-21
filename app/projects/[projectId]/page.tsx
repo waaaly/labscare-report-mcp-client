@@ -9,9 +9,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, XCircle, X, Badge, Database, Eye } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Loader2, Sparkles, FileIcon, CheckCircle2, XCircle, X, Badge, Database, Eye, ChevronsUpDown, ImageIcon, FileJson } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -239,11 +239,23 @@ export default function ProjectWorkspacePage() {
     }
   };
 
+
   const getFileIcon = (type: string) => {
-    if (type.includes('pdf')) {
-      return <FileText className="h-5 w-5 text-cyan-600" />;
+    switch (type) {
+      case 'pdf':
+        return <FileText className="h-6 w-6 text-red-500" />;
+      case 'json':
+      case 'application/json':
+        return <FileJson className="h-6 w-6 text-amber-500" />;
+      case 'image':
+      case 'image/png':
+        return <ImageIcon className="h-6 w-6 text-blue-500" />;
+      case 'markdown':
+      case 'application/octet-stream':
+        return <FileText className="h-6 w-6 text-gray-500" />;
+      default:
+        return <FileText className="h-6 w-6 text-gray-400" />;
     }
-    return <FileIcon className="h-5 w-5 text-gray-400" />;
   };
 
   const getTypeBadge = (type: string) => {
@@ -283,7 +295,7 @@ export default function ProjectWorkspacePage() {
 
 
   return (
-    <div className="flex flex-col h-screen bg-[#f3e8ff]">
+    <div className="flex flex-col h-screen bg-[#F0FDFA]">
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href="/projects">
@@ -300,7 +312,7 @@ export default function ProjectWorkspacePage() {
         </div>
         <Dialog open={isAddReportDialogOpen} onOpenChange={setIsAddReportDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer">
+            <Button className="bg-[#22C55E] hover:bg-[#16A34A] text-white cursor-pointer">
               <FileText className="mr-2 h-4 w-4" />
               Add Report
             </Button>
@@ -337,7 +349,7 @@ export default function ProjectWorkspacePage() {
                 <Button
                   onClick={handleAddReport}
                   disabled={!newReportName.trim()}
-                  className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
+                  className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white cursor-pointer"
                 >
                   Add Report
                 </Button>
@@ -366,12 +378,12 @@ export default function ProjectWorkspacePage() {
             <p className="text-xs text-gray-400">Add your first report to start</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-4">
             {reports.map((report) => (
-              <Accordion key={report.id} type="single" collapsible className="w-full">
-                <AccordionItem value={report.id} className="border rounded-lg bg-white px-0 h-full">
-                  <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50">
-                    <div className="grid grid-cols-4 gap-4 w-full">
+              <div key={report.id} className="border rounded-lg bg-white overflow-hidden">
+                <Collapsible className="w-full">
+                  <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 cursor-pointer">
+                    <div className="flex items-center gap-4 flex-1">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-cyan-600" />
                         <div className="text-left">
@@ -386,30 +398,33 @@ export default function ProjectWorkspacePage() {
                       </div>
                       <div className="text-left">
                         {report?.task ? (
-                          <div>
-                            <span className="text-sm font-medium">{report.task.name}</span>
-                            <p className="text-xs text-gray-500 mt-1">{report.task.status}</p>
-                          </div>
+                          <span className="text-sm font-medium">{report.task.name}</span>
                         ) : (
                           <span className="text-sm font-medium">暂无相关任务</span>
                         )}
                       </div>
-                      <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
-                        <div
-                          className="flex items-center justify-center text-sm font-medium h-8 px-3"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedReportId(report.id);
-                            setIsFileUploadDrawerOpen(true);
-                          }}
-                        >
-                          <Upload className="mr-1 h-3 w-3" />
-                          Upload
-                        </div>
-                      </div>
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-4 pb-4 h-full overflow-y-auto">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="flex items-center justify-center text-sm font-medium h-8 px-3"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedReportId(report.id);
+                          setIsFileUploadDrawerOpen(true);
+                        }}
+                      >
+                        <Upload className="mr-1 h-3 w-3" />
+                        Upload
+                      </div>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <ChevronsUpDown className="h-4 w-4" />
+                          <span className="sr-only">Toggle details</span>
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+                  </div>
+                  <CollapsibleContent className="px-4 pb-4">
                     <div className="space-y-4">
                       {report.documents && report.documents.length > 0 ? (
                         <div>
@@ -463,10 +478,25 @@ export default function ProjectWorkspacePage() {
                           No documents uploaded yet
                         </div>
                       )}
+                      {report?.task && (
+                        <div className="mt-4">
+                          <h4 className="text-sm font-medium mb-2">Task Details</h4>
+                          <div className="rounded-md border px-4 py-2 text-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-muted-foreground">Task Name</span>
+                              <span className="font-medium">{report.task.name}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Status</span>
+                              <span className="font-medium">{report.task.status}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
             ))}
           </div>
         )}
@@ -537,7 +567,7 @@ export default function ProjectWorkspacePage() {
               <Button
                 onClick={handleUpload}
                 disabled={isUploading || selectedFiles.length === 0 || !selectedReportId}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer"
+                className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white cursor-pointer"
               >
                 {isUploading ? (
                   <>
@@ -608,7 +638,7 @@ export default function ProjectWorkspacePage() {
             <Button
               onClick={() => setIsProgressDialogOpen(false)}
               disabled={Object.values(documentProgress).some(p => p.status === 'processing')}
-              className="bg-[#0D9488] hover:bg-[#0D9488]/90 text-white"
+              className="bg-[#0891B2] hover:bg-[#0E7490] text-white"
             >
               {Object.values(documentProgress).some(p => p.status === 'processing') ? 'Processing...' : 'Close'}
             </Button>
