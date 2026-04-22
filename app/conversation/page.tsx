@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Buffer } from 'buffer';
 import ConversationSidebar from '@/components/conversation/ConversationSidebar';
 import ChatArea from '@/components/conversation/ChatArea';
 import AgentToolPanel from '@/components/conversation/AgentToolPanel';
+import WelcomeCard from '@/components/conversation/WelcomeCard';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -52,10 +53,10 @@ export default function LLMConversationPage() {
   const [currentStatus, setCurrentStatus] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
-  const [conversations, setConversations] = useState<{ id: string; title: string; createdAt: number }[]>([]);
+  const [conversations, setConversations] = useState<{ id: string; title: string; createdAt: number; preview?: string }[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-
+  const [isShowWelcome, setIsShowWelcome] = useState(true);
   // 搜索状态
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
@@ -92,7 +93,7 @@ export default function LLMConversationPage() {
 
   useEffect(() => {
     const listRaw = typeof window !== 'undefined' ? localStorage.getItem(LS_CONV_LIST) : null;
-    let list: { id: string; title: string; createdAt: number }[] = [];
+    let list: { id: string; title: string; createdAt: number; preview?: string }[] = [];
     if (listRaw) {
       try {
         list = JSON.parse(listRaw);
@@ -100,7 +101,7 @@ export default function LLMConversationPage() {
     }
     if (!list || list.length === 0) {
       const id = Math.random().toString(36).slice(2);
-      list = [{ id, title: 'New Conversation', createdAt: Date.now() }];
+      list = [{ id, title: '新对话', createdAt: Date.now() }];
       localStorage.setItem(LS_CONV_LIST, JSON.stringify(list));
       localStorage.setItem(LS_CUR_ID, id);
       localStorage.setItem(msgKey(id), JSON.stringify([]));
@@ -111,7 +112,17 @@ export default function LLMConversationPage() {
     const msgsRaw = localStorage.getItem(msgKey(cur));
     if (msgsRaw) {
       try {
-        setMessages(JSON.parse(msgsRaw));
+        const parsedMsgs = JSON.parse(msgsRaw);
+        setMessages(parsedMsgs);
+        // 从消息中提取第一条用户消息作为preview
+        if (parsedMsgs.length > 0) {
+          const firstUserMsg = parsedMsgs.find((m: Message) => m.role === 'user' && m.content);
+          if (firstUserMsg) {
+            setConversations(prev => prev.map(c =>
+              c.id === cur ? { ...c, preview: firstUserMsg.content.slice(0, 50) } : c
+            ));
+          }
+        }
       } catch {
         setMessages([]);
       }
@@ -134,7 +145,7 @@ export default function LLMConversationPage() {
 
   const createNewConversation = useCallback(() => {
     const id = Math.random().toString(36).slice(2);
-    const conv = { id, title: 'New Conversation', createdAt: Date.now() };
+    const conv = { id, title: '新对话', createdAt: Date.now() };
     const next = [conv, ...conversations];
     setConversations(next);
     setCurrentId(id);
@@ -151,12 +162,39 @@ export default function LLMConversationPage() {
       const raw = localStorage.getItem(msgKey(id));
       const nextMsgs = raw ? JSON.parse(raw) : [];
       setMessages(nextMsgs);
+      // 从消息中提取第一条用户消息作为preview
+      if (nextMsgs.length > 0) {
+        const firstUserMsg = nextMsgs.find((m: Message) => m.role === 'user' && m.content);
+        if (firstUserMsg) {
+          setConversations(prev => prev.map(c =>
+            c.id === id ? { ...c, preview: firstUserMsg.content.slice(0, 50) } : c
+          ));
+        }
+      }
     } catch {
       setMessages([]);
     }
     setCurrentId(id);
     setInput('');
   }, [currentId, msgKey]);
+
+  // 快捷操作处理
+  const handleQuickAction = useCallback((action: string) => {
+    const prompts: Record<string, string> = {
+      '编写代码': '请帮我编写一段代码，描述你想要实现的功能：',
+      '文档处理': '请帮我处理文档，你可以上传文件或描述需要完成的任务：',
+      '问题解答': '请描述你的问题，我会尽力帮你解答：',
+      '数据分析': '请提供需要分析的数据或描述数据来源：',
+    };
+    setInput(prompts[action] || '');
+    setIsShowWelcome(false);
+  }, []);
+
+  // 插入 prompt 到输入框
+  const handleInsertPrompt = useCallback((prompt: string) => {
+    setInput(prompt);
+    addLog(`Inserted prompt: ${prompt.slice(0, 50)}...`);
+  }, [addLog]);
 
   // 删除对话
   const handleDeleteConversation = useCallback((id: string) => {
@@ -219,7 +257,7 @@ export default function LLMConversationPage() {
           try {
             const parsed = JSON.parse(text);
             prettyText = JSON.stringify(parsed, null, 2);
-          } catch {}
+          } catch { }
           fileAttachments.push({
             name: file.name,
             type: 'json',
@@ -272,7 +310,7 @@ export default function LLMConversationPage() {
         .filter(msg => !msg.isStreaming && msg.content)
         .map(msg => ({ role: msg.role, content: msg.content }));
       formData.append('messagesJson', JSON.stringify(standardMessages));
-     
+
       if (selectedFiles.length > 0) {
         selectedFiles.forEach((file) => {
           formData.append('files', file);
@@ -313,7 +351,7 @@ export default function LLMConversationPage() {
         const lines = sseBuffer.split('\n');
         sseBuffer = lines.pop() || ''; // 保留未完成的行
         console.log('[Client] 处理 SSE 行数:', lines.length);
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6); // 移除 'data: ' 前缀
@@ -370,7 +408,7 @@ export default function LLMConversationPage() {
             }
           }
         }
-        
+
         await new Promise(requestAnimationFrame);
       }
 
@@ -559,7 +597,8 @@ export default function LLMConversationPage() {
 
   return (
     <div className="flex gap-4 h-[calc(100vh-var(--header-h,10rem))] overflow-hidden bg-background">
-      <div className="w-[260px] h-full border-r flex-shrink-0">
+      {/* 左侧对话列表 */}
+      <div className="w-[280px] h-full flex-shrink-0">
         <ConversationSidebar
           conversations={conversations}
           currentId={currentId}
@@ -569,26 +608,37 @@ export default function LLMConversationPage() {
           onRename={handleRenameConversation}
         />
       </div>
+
+      {/* 中间对话区域 */}
       <div className="flex-1 h-full flex flex-col min-w-0">
-        <ChatArea
-          title={conversations.find(c => c.id === currentId)?.title || 'Chat'}
-          messages={messages}
-          isLoading={isLoading}
-          input={input}
-          onSend={handleSend}
-          onStop={handleStop}
-          onRegenerate={handleRegenerate}
-          messagesEndRef={messagesEndRef}
-          onFilesChange={handleSendFiles}
-          currentStatus={currentStatus}
-          searchQuery={searchQuery}
-          onSearchChange={handleSearchChange}
-          highlightedMessageIndex={highlightedMessageIndex}
-          onExport={handleExport}
-        />
+        { isShowWelcome ? (
+          <WelcomeCard onQuickAction={handleQuickAction} />
+        ) : (
+          <ChatArea
+            title={conversations.find(c => c.id === currentId)?.title || '对话'}
+            messages={messages}
+            isLoading={isLoading}
+            input={input}
+            onSend={handleSend}
+            onStop={handleStop}
+            onRegenerate={handleRegenerate}
+            messagesEndRef={messagesEndRef}
+            onFilesChange={handleSendFiles}
+            currentStatus={currentStatus}
+            searchQuery={searchQuery}
+            onSearchChange={handleSearchChange}
+            highlightedMessageIndex={highlightedMessageIndex}
+            onExport={handleExport}
+          />
+        )}
       </div>
-      <div className="w-[320px] h-full border-l flex-shrink-0">
-        <AgentToolPanel logs={logs} />
+
+      {/* 右侧高级功能面板 */}
+      <div className="w-[300px] h-full flex-shrink-0">
+        <AgentToolPanel 
+          logs={logs}
+          onInsertPrompt={handleInsertPrompt}
+        />
       </div>
     </div>
   );
