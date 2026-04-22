@@ -1,0 +1,152 @@
+{
+  "$schema": "https://walkinglabs.github.io/learn-harness-engineering/schemas/feature_list.json",
+  "project": "LabFlow MCP Studio",
+  "description": "Multi-tenant AI Agent orchestration platform for laboratory report script generation",
+  "features": [
+    {
+      "id": "core-auth",
+      "priority": 1,
+      "area": "auth",
+      "title": "多租户认证与授权",
+      "user_visible_behavior": "用户可以通过 OAuth/密码登录，进入 Dashboard 后可切换不同实验室（Lab），每个实验室的数据完全隔离。",
+      "status": "not_started",
+      "verification": [
+        "1. 启动应用，访问 /dashboard",
+        "2. 检查是否显示实验室切换器",
+        "3. 切换实验室后，验证数据是否正确隔离"
+      ],
+      "evidence": null,
+      "notes": "基于 Prisma schema 中的 Lab/User/Organization 模型"
+    },
+    {
+      "id": "core-project",
+      "priority": 2,
+      "area": "projects",
+      "title": "项目管理功能",
+      "user_visible_behavior": "用户可以创建、编辑、删除项目，每个项目包含多个报告模板和脚本。",
+      "status": "not_started",
+      "verification": [
+        "1. 访问 /projects 页面",
+        "2. 创建新项目，填写名称和描述",
+        "3. 在项目内创建报告模板",
+        "4. 删除项目，验证关联数据是否正确清理"
+      ],
+      "evidence": null,
+      "notes": "API 路由: /api/labs/[labId]/projects"
+    },
+    {
+      "id": "core-conversation",
+      "priority": 3,
+      "area": "conversation",
+      "title": "AI 对话界面",
+      "user_visible_behavior": "用户可以与 AI Agent 对话，上传模板图片和 JSON 数据，Agent 流式返回分析结果和生成的脚本。",
+      "status": "not_started",
+      "verification": [
+        "1. 访问 /conversation/[projectId] 页面",
+        "2. 上传模板图片和占位符说明",
+        "3. 检查 SSE 流式响应是否正常显示",
+        "4. 验证工具调用可视化是否展示"
+      ],
+      "evidence": null,
+      "notes": "核心模块: lib/llm/ ReactAgent, SSE 流式响应"
+    },
+    {
+      "id": "core-script-generator",
+      "priority": 4,
+      "area": "scripts",
+      "title": "脚本生成与执行",
+      "user_visible_behavior": "AI 分析模板后生成 JavaScript 脚本，用户可以在沙箱中执行测试，查看输出结果。",
+      "status": "not_started",
+      "verification": [
+        "1. 在对话中触发脚本生成",
+        "2. 查看生成的脚本内容",
+        "3. 点击执行，在 isolated-vm 沙箱中运行",
+        "4. 检查输出结果是否与预期一致"
+      ],
+      "evidence": null,
+      "notes": "沙箱执行: /api/runner, isolated-vm 128MB 内存限制"
+    },
+    {
+      "id": "core-document-upload",
+      "priority": 5,
+      "area": "documents",
+      "title": "文档上传与转换",
+      "user_visible_behavior": "用户上传 Word/PDF 文档，系统自动转换为 PDF，生成封面图片，存入 MinIO。",
+      "status": "not_started",
+      "verification": [
+        "1. 上传 .docx 文件",
+        "2. 检查是否生成 PDF 和封面图",
+        "3. 在 /documents 页面查看上传的文件",
+        "4. 验证文件可下载和预览"
+      ],
+      "evidence": null,
+      "notes": "依赖: LibreOffice (docx→PDF), sharp (封面图)"
+    },
+    {
+      "id": "core-task-pipeline",
+      "priority": 6,
+      "area": "tasks",
+      "title": "任务流水线",
+      "user_visible_behavior": "用户创建任务后，系统通过 BullMQ 异步处理，实时推送进度到前端。",
+      "status": "not_started",
+      "verification": [
+        "1. 创建新任务，选择模板和数据源",
+        "2. 查看任务列表中的状态更新",
+        "3. 检查 SSE 推送的实时进度",
+        "4. 任务完成后查看结果"
+      ],
+      "evidence": null,
+      "notes": "Redis Stream 推送进度，BullMQ Worker 处理"
+    },
+    {
+      "id": "skill-labscare-script",
+      "priority": 7,
+      "area": "skills",
+      "title": "LabsCare 脚本技能",
+      "user_visible_behavior": "AI Agent 加载 labsccare-script 技能后，可以理解模板占位符、生成符合 LabsCare 规范的脚本。",
+      "status": "not_started",
+      "verification": [
+        "1. 检查 skills/labscare-script/SKILL.md 是否存在",
+        "2. 在对话中触发技能加载",
+        "3. 上传酵母/沙门氏菌等模板",
+        "4. 验证生成的脚本格式正确"
+      ],
+      "evidence": null,
+      "notes": "核心决策优先级: 模板占位符 > 预期结果 > 用户指令 > 历史模式"
+    },
+    {
+      "id": "infra-monitoring",
+      "priority": 8,
+      "area": "infra",
+      "title": "Prometheus 监控",
+      "user_visible_behavior": "系统暴露 /metrics 端点，展示任务数、LLM 延迟、队列状态等指标。",
+      "status": "not_started",
+      "verification": [
+        "1. 访问 /metrics 端点",
+        "2. 检查任务计数和延迟指标",
+        "3. 运行任务后验证指标更新",
+        "4. 检查 Prometheus 可正确抓取"
+      ],
+      "evidence": null,
+      "notes": "使用 prom-client 库"
+    },
+    {
+      "id": "infra-mcp-integration",
+      "priority": 9,
+      "area": "mcp",
+      "title": "MCP 服务器集成",
+      "user_visible_behavior": "系统可以连接外部 MCP 服务器，通过 Streamable HTTP 扩展 Agent 工具能力。",
+      "status": "not_started",
+      "verification": [
+        "1. 配置 MCP_SERVER_URL",
+        "2. 检查 /api/mcp 连接是否成功",
+        "3. 列出可用工具",
+        "4. 在对话中调用 MCP 工具"
+      ],
+      "evidence": null,
+      "notes": "使用 @modelcontextprotocol/sdk"
+    }
+  ],
+  "last_updated": "2026-04-22T12:59:00+08:00",
+  "updated_by": "Harness Engineering Setup"
+}
