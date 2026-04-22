@@ -1,178 +1,239 @@
 # LabFlow MCP Studio
 
-A multi-tenant AI Agent orchestration platform for laboratory workflows, built with Next.js 15, TypeScript, and MCP (Model Context Protocol).
+> Multi-tenant AI Agent orchestration platform for laboratory report script generation, powered by LLM and MCP (Model Context Protocol).
 
-## Features
+## What It Does
 
-- **Multi-Tenant Architecture**: Lab-based isolation with complete knowledge base separation
-- **Project Workspace**: Complete workflow from document upload to script generation
-- **Document Viewer**: Support for Excel/PDF preview with cell selection
-- **Annotation Mapping**: Drag-and-drop field mapping from cells to system fields
-- **Schema Builder**: Visual JSON Schema editor based on field mappings
-- **LIMS Integration**: Query LIMS data via MCP tools
-- **Script Generator**: Generate JavaScript extraction scripts based on templates
-- **Knowledge Center**: Manage lab-specific knowledge base with version history
-- **Execution & Debug**: Built-in script editor with execution and logging
+LabFlow MCP Studio automates the generation of LabsCare LIMS report scripts. It uses Large Language Models (LLMs) to analyze template images, placeholder descriptions, and expected result images, then produces the JavaScript scripts required by the LabsCare report engine — replacing tedious manual scripting with intelligent, rule-guided automation.
+
+Key capabilities:
+
+- **AI-powered script generation** — LLM agents analyze templates and data structures to produce report scripts following LabsCare engine conventions
+- **Multi-tenant lab isolation** — Each lab operates in its own data space with independent projects, reports, and scripts
+- **Document processing pipeline** — Upload Word/PDF documents; the system auto-converts to PDF, generates cover images, and stores them in MinIO
+- **Script sandbox execution** — Test generated scripts in an `isolated-vm` sandbox with mock data before deploying
+- **Streaming task execution** — BullMQ workers process tasks asynchronously with Redis Stream-based real-time progress updates
+- **MCP integration** — Connect to MCP servers via Streamable HTTP for extensible tool orchestration
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Next.js 15 App                  │
+│  Dashboard · Projects · Tasks · Conversation    │
+├─────────────────────────────────────────────────┤
+│                   API Layer                      │
+│  /api/labs · /api/tasks · /api/llm · /api/runner│
+├──────────────┬──────────────┬───────────────────┤
+│   LangChain  │   BullMQ     │   MCP Client      │
+│  ReactAgent  │   Workers    │  (Streamable HTTP) │
+├──────────────┴──────────────┴───────────────────┤
+│  PostgreSQL (Prisma)  │  Redis  │  MinIO         │
+└─────────────────────────────────────────────────┘
+```
 
 ## Tech Stack
 
-- **Framework**: Next.js 15 (App Router + React 19 Server Components)
-- **Language**: TypeScript (strict mode)
-- **Styling**: Tailwind CSS + shadcn/ui
-- **State Management**: Zustand (Lab Store + Project Store)
-- **Database**: PostgreSQL + Prisma ORM
-- **MCP Integration**: Custom MCP Client wrapper
-- **Validation**: Zod
-- **Icons**: Lucide React
-- **Fonts**: Figtree (headings) + Noto Sans (body)
+| Category | Technology |
+|----------|-----------|
+| **Framework** | Next.js 15 (App Router), React 19, TypeScript 5.6 |
+| **Styling** | TailwindCSS 3 + shadcn/ui (Radix UI) |
+| **State** | Zustand 5 |
+| **Database** | PostgreSQL via Prisma ORM 5.22 |
+| **Queue** | Redis (ioredis) + BullMQ 5 |
+| **Storage** | MinIO (S3-compatible object storage) |
+| **LLM** | LangChain + ChatOpenAI / ChatOpenRouter / ChatGoogleGenAI |
+| **MCP** | @modelcontextprotocol/sdk 1.27 |
+| **Sandbox** | isolated-vm (safe script execution) |
+| **Documents** | LibreOffice (docx→PDF), sharp (image), pdf-to-img, mammoth |
+| **Monitoring** | prom-client (Prometheus metrics) |
+| **i18n** | i18next + react-i18next (English / Chinese) |
+| **Logging** | Pino + pino-pretty |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - PostgreSQL 14+
-- npm or yarn
+- Redis 6+
+- MinIO (or S3-compatible storage)
+- LibreOffice (for Word→PDF conversion)
 
-### Installation
+### 1. Clone and Install
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone <repo-url>
 cd labscare-report-mcp-client
-```
-
-2. Install dependencies:
-```bash
 npm install
 ```
 
-3. Set up environment variables:
-```bash
-cp .env.example .env
-```
+### 2. Configure Environment
 
-Edit `.env` with your configuration:
-```env
+Copy `.env` and fill in your values:
+
+```bash
+# Database
 DATABASE_URL="postgresql://postgres:password@localhost:5432/labscare-report-mcp-client"
-MCP_SERVER_URL="http://localhost:3001"
-NEXT_PUBLIC_APP_NAME="LabFlow MCP Studio"
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# Redis
+REDIS_URL="redis://localhost:6379"
+
+# MinIO
+MINIO_ENDPOINT="localhost"
+MINIO_ACCESS_KEY="admin"
+MINIO_SECRET_KEY="password123"
+
+# LLM (choose one provider)
+FLOW_API_KEY="your-api-key"
+FLOW_API_BASE_URL="https://openrouter.ai/api/v1"
+LLM_MODEL_NAME="Pro/moonshotai/Kimi-K2.5"
+
+# MCP Server (optional)
+MCP_SERVER_URL="http://localhost:8000"
+
+# LibreOffice
+SOFFICE_PATH="C:/Program Files/LibreOffice/program/soffice.exe"
 ```
 
-4. Set up the database:
+### 3. Initialize Database
+
 ```bash
-npx prisma db push
+npm run db:init    # Run Prisma migrations
+npm run db:gen     # Generate Prisma client
 ```
 
-5. Run the development server:
+### 4. Start Services
+
+Start the required infrastructure with Docker Compose:
+
 ```bash
+docker compose -f redis.yaml up -d
+docker compose -f minio.yaml up -d
+```
+
+### 5. Run the Application
+
+```bash
+# Start Next.js dev server
 npm run dev
+
+# Start BullMQ worker (in a separate terminal)
+npm run worker:dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser.
+The app will be available at `http://localhost:3000`.
+
+> [!NOTE]
+> Set `USE_MOCK_LLM=true` in `.env` to use simulated LLM responses for development without consuming API credits.
 
 ## Project Structure
 
 ```
-labscare-report-mcp-client/
-├── app/                      # Next.js App Router
-│   ├── api/                 # API routes
-│   │   └── labs/           # Lab-related endpoints
-│   ├── dashboard/           # Dashboard page
-│   ├── projects/            # Project pages
-│   ├── knowledge/          # Knowledge center
-│   ├── settings/           # Lab settings
-│   └── layout.tsx         # Root layout
-├── components/             # React components
-│   ├── layout/            # Layout components (Header, Sidebar)
-│   ├── ui/               # shadcn/ui components
-│   └── workspace/        # Project workspace components
-├── lib/                  # Utility functions
-│   ├── mcp/             # MCP client wrapper
-│   ├── prisma.ts        # Prisma client
-│   └── utils.ts        # Helper functions
-├── store/              # Zustand stores
-│   ├── lab-store.ts    # Lab state management
-│   └── project-store.ts # Project state management
-├── types/              # TypeScript type definitions
-├── prisma/            # Prisma schema and migrations
-└── public/            # Static assets
+├── app/                        # Next.js App Router
+│   ├── dashboard/              # Overview & statistics
+│   ├── projects/               # Project management
+│   ├── tasks/                  # Task creation & monitoring
+│   ├── conversation/           # AI chat interface (SSE streaming)
+│   ├── scripts/                # Script viewer & editor
+│   ├── documents/              # Document upload & management
+│   ├── knowledge/              # Knowledge base configuration
+│   └── api/                    # Backend API routes
+│       ├── labs/               # Lab CRUD + nested resources
+│       ├── tasks/              # Task management & streaming
+│       ├── llm/                # LLM conversation (SSE)
+│       ├── runner/             # Script sandbox execution
+│       └── sse/                # Upload progress SSE
+├── components/                 # React components
+│   ├── ui/                     # shadcn/ui primitives
+│   ├── layout/                 # Header, sidebar, lab switcher
+│   ├── conversation/           # Chat UI, virtualized messages
+│   └── workspace/              # Document viewer, script generator
+├── lib/                        # Core libraries
+│   ├── llm/                    # Agent factory, ReactAgent, skill loader, API tools
+│   ├── mcp/                    # MCP client (Streamable HTTP)
+│   ├── redis/                  # BullMQ workers (document + task processing)
+│   ├── minio/                  # MinIO client (upload, download, JSON parsing)
+│   ├── queue/                  # Redis Stream publisher
+│   ├── docx/                   # Word→PDF conversion + cover generation
+│   ├── config/                 # Zod-validated environment config
+│   ├── monitoring/             # Prometheus metrics
+│   └── i18n/                   # Internationalization setup
+├── skills/                     # AI skill definitions
+│   └── labscare-script/        # LabsCare report script skill
+│       ├── SKILL.md            # Core rules & workflow
+│       ├── references/         # API reference, patterns, examples
+│       └── scripts/            # Test & auto-fix utilities
+├── prisma/                     # Database schema & seed
+├── store/                      # Zustand state stores
+├── types/                      # TypeScript type definitions
+└── public/                     # Static assets & i18n locales
 ```
 
-## MCP Integration
+## Key Features
 
-The application integrates with MCP (Model Context Protocol) for:
+### AI Conversation Interface
 
-- **Tool Calls**: `callMcpTool(name, args)` - Execute MCP tools
-- **Resource Reads**: `readMcpResource(uri)` - Read MCP resources
-- **Knowledge Base**: Load lab-specific knowledge via MCP resources
+The `/conversation` page provides a full-featured chat UI with:
 
-### Available MCP Tools
+- SSE streaming responses with thought/reasoning display
+- File attachment support (images, JSON, Markdown)
+- Tool call visualization (see which tools the agent invokes)
+- Conversation history management
+- Model switching
 
-- `getProcessData`: Retrieve process data from LIMS
-- `filterSamples`: Filter samples based on criteria
-- `buildSignatureUrl`: Generate signed URLs for document access
-- `generateScript`: Generate extraction scripts based on schema
-- `simulateScript`: Test scripts in sandbox environment
+### Task Pipeline
 
-## Design System
+1. **Create a task** — Select a lab, project, and report template
+2. **Upload documents** — Template images, placeholder docs, JSON data
+3. **Agent processes** — LLM analyzes inputs and generates scripts
+4. **Real-time progress** — Redis Stream pushes updates to the UI
+5. **Review & test** — Execute scripts in the sandbox, auto-fix errors
 
-The application follows a professional laboratory design system with:
+### Script Sandbox
 
-- **Colors**: Calm cyan (#0891B2) + Health green (#059669)
-- **Typography**: Figtree (headings) + Noto Sans (body)
-- **Accessibility**: WCAG AAA compliant with high contrast
-- **Dark Mode**: Full dark mode support
+The `/api/runner` endpoint executes scripts in an `isolated-vm` sandbox with:
 
-See `design-system/labflow-mcp-studio/MASTER.md` for complete design specifications.
+- `load('/tools.js')` — LabsCare helper functions
+- `helper.getProjectData()` / `helper.getProjectSamples()` — Data access
+- `getJsonFromMinio()` — Fetch JSON data sources
+- 128MB memory limit, 2-second timeout
 
-## Database Schema
+### Monitoring
 
-### Core Models
+Prometheus metrics are exposed for:
 
-- **Lab**: Multi-tenant workspace with isolated knowledge base
-- **Project**: Data extraction projects within a lab
-- **Document**: Uploaded documents (Excel/PDF)
-- **Schema**: JSON Schema definitions
-- **Script**: Generated extraction scripts
-- **LabMember**: Lab members with RBAC
+- Task counts, durations, and active counts
+- LLM call latency, TTFT, and token usage
+- API request rates and latencies
+- SSE connection counts
+- Queue sizes and error rates
 
 ## Scripts
 
-```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
-npm run typecheck    # Run TypeScript type checking
-npm run db:push      # Push schema changes to database
-npm run db:studio    # Open Prisma Studio
-```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Next.js dev server with Pino pretty logging |
+| `npm run build` | Production build |
+| `npm run start` | Start production server on port 8081 |
+| `npm run worker:dev` | Start BullMQ worker with hot reload |
+| `npm run db:init` | Run Prisma migrations |
+| `npm run db:gen` | Generate Prisma client |
+| `npm run db:push` | Push schema to database |
+| `npm run db:seed` | Seed database |
+| `npm run db:studio` | Open Prisma Studio |
+| `npm run typecheck` | TypeScript type checking |
+| `npm run lint` | ESLint |
 
-## Development Workflow
+## AI Skill System
 
-1. **Create a Lab**: Use the Lab Switcher to create/select a lab
-2. **Create a Project**: Navigate to Projects and create a new project
-3. **Upload Documents**: Upload Excel/PDF reports in the Document Viewer
-4. **Map Fields**: Create field mappings in the Annotation Mapping tab
-5. **Build Schema**: Define JSON Schema in the Schema Builder
-6. **Query LIMS**: Fetch sample data using the LIMS Data panel
-7. **Generate Script**: Generate extraction script based on your configuration
-8. **Test & Debug**: Execute and debug scripts in the Execution & Debug panel
+The `skills/labscare-script/` directory contains a self-contained knowledge skill that the LLM agent loads at runtime. It defines:
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- **Decision priority** — Template placeholders > expected results > user instructions > historical patterns
+- **Workflow** — Collect materials → identify placeholders → determine structure family → generate script → test & auto-fix
+- **Non-negotiable rules** — Output keys match template placeholders exactly; field names are never "normalized"
+- **Auto-fix loop** — Test scripts with mock data, measure accuracy, apply fixes up to 3 iterations
 
 ## License
 
-This project is licensed under the MIT License.
-
-## Support
-
-For support, please open an issue in the repository or contact the development team.
+Private — All rights reserved.
