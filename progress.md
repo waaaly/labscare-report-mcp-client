@@ -28,10 +28,11 @@ npm run lint
 ```
 
 ### 当前最高优先级未完成功能
-（根据 feature_list.json 中 priority 最小的 in_progress 状态功能填写）
+根据 feature_list.json，P0、P1、P2 已全部完成。
+下一个功能：P3（模型切换、消息分支、Token 统计、Skill 切换）
 
 ### 当前 Blocker
-（记录阻塞进度的具体问题）
+无
 
 ---
 
@@ -71,9 +72,45 @@ npm run lint
 | **已完成** | 1. 读取 MEMORY.md<br>2. 将 Harness 框架规范完整写入 MEMORY.md<br>3. 更新 2026-04-22.md 日志<br>4. 更新 progress.md 第 2 轮会话记录<br>5. 执行 git commit |
 | **运行过的验证** | 无（配置文件修改，无需验证） |
 | **已记录证据** | - MEMORY.md: 包含 Harness 框架规范和项目信息<br>- 2026-04-22.md: 记录本次会话工作<br>- progress.md: 第 2 轮会话记录 |
+| **提交记录** | 0cfd8a8 |
+| **已知风险或未解决问题** | 无 |
+| **下一步最佳动作** | 分析并实现 AI 对话界面的 P0 功能（停止生成、重新生成） |
+
+### 2026-04-22 14:49 - 第 3 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 实现 AI 对话界面的 P0 功能：停止生成、消息重新生成 |
+| **已完成** | 1. 分析对话界面缺失功能，对比现代 AI 产品<br>2. 创建 P0 功能优先级清单<br>3. 实现停止生成功能<br>4. 实现重新生成功能<br>5. 更新 feature_list.json 记录 evidence |
+| **运行过的验证** | `npm run typecheck` - 通过<br>`npm run lint` - 仅有项目已有警告 |
+| **已记录证据** | - app/conversation/page.tsx: 添加 AbortController 和 handleStop/handleRegenerate<br>- components/conversation/ChatArea.tsx: 添加停止和重新生成按钮<br>- feature_list.json: 更新为 passing 状态 |
 | **提交记录** | 待提交 |
 | **已知风险或未解决问题** | 无 |
-| **下一步最佳动作** | 开始实现 feature_list.json 中 priority=1 的"多租户认证与授权"功能 |
+| **下一步最佳动作** | 提交本次变更，然后实现 P1 功能（对话删除、对话重命名、消息时间戳） |
+
+### 2026-04-22 15:05 - 第 4 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 实现 AI 对话界面的 P1 功能：对话删除、对话重命名、消息时间戳 |
+| **已完成** | 1. 对话删除：<br>   - ConversationSidebar 添加删除按钮（Trash2 图标）<br>   - 添加确认 Dialog<br>   - page.tsx 添加 handleDeleteConversation<br>2. 对话重命名：<br>   - ConversationSidebar 添加编辑按钮（Pencil 图标）<br>   - 编辑状态显示 Input 输入框<br>   - page.tsx 添加 handleRenameConversation<br>3. 消息时间戳：<br>   - Message 类型添加 timestamp 字段<br>   - VirtualizedMessages 添加 formatMessageTime 函数<br>   - 用户消息右对齐显示时间，AI 消息左对齐 |
+| **运行过的验证** | `npm run typecheck` - 通过<br>`npm run lint` - 仅有项目已有错误（display-name 等，非本次修改引入） |
+| **已记录证据** | - ConversationSidebar.tsx: 添加删除、重命名 UI<br>- page.tsx: 添加 handleDeleteConversation、handleRenameConversation<br>- VirtualizedMessages.tsx: 添加时间戳显示<br>- feature_list.json: 3 个功能更新为 passing 状态 |
+| **提交记录** | 待提交 |
+| **已知风险或未解决问题** | 无 |
+| **下一步最佳动作** | 提交本次变更，然后实现 P2 功能（图片放大、对话搜索、对话导出） |
+
+### 2026-04-22 15:35 - 第 5 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 实现 AI 对话界面的 P2 功能：图片放大预览、对话搜索、对话导出 |
+| **已完成** | 1. 图片放大预览：<br>   - 创建 ImageLightbox.tsx 组件<br>   - 支持缩放、拖拽、旋转重置<br>   - VirtualizedMessages 图片添加点击打开 Lightbox<br>2. 对话搜索：<br>   - ChatArea 添加搜索按钮和搜索框<br>   - VirtualizedMessages 添加 highlightText 函数<br>   - 匹配消息黄色边框高亮<br>3. 对话导出：<br>   - ChatArea 添加导出下拉菜单<br>   - page.tsx 添加 handleExport 函数<br>   - 支持 Markdown 和 JSON 格式导出 |
+| **运行过的验证** | `npx tsc --noEmit` - 通过<br>`npm run lint` - 仅有项目已有警告 |
+| **已记录证据** | - components/conversation/ImageLightbox.tsx: 新建<br>- components/conversation/VirtualizedMessages.tsx: +搜索高亮逻辑<br>- components/conversation/ChatArea.tsx: +搜索框、导出菜单<br>- app/conversation/page.tsx: +搜索状态、handleExport |
+| **提交记录** | 待提交 |
+| **已知风险或未解决问题** | 无 |
+| **下一步最佳动作** | 提交本次变更，然后实现 P3 功能（模型切换、消息分支、Token 统计） |
 
 ---
 

@@ -94,7 +94,7 @@ export default function ScriptGenerator({ projectId }: ScriptGeneratorProps) {
 
           {!code && !error && (
             <div className="text-center py-8 text-muted-foreground">
-              Click "Generate Script" to create a JavaScript extraction script based on your
+              Click &quot;Generate Script&quot; to create a JavaScript extraction script based on your
               schema and mappings
             </div>
           )}

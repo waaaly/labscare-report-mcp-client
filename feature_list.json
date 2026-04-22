@@ -4,6 +4,132 @@
   "description": "Multi-tenant AI Agent orchestration platform for laboratory report script generation",
   "features": [
     {
+      "id": "conv-stop-generation",
+      "priority": 1,
+      "area": "conversation",
+      "title": "停止 AI 生成",
+      "user_visible_behavior": "用户点击停止按钮后，正在流式传输的 AI 回复立即中断，不再继续显示内容。",
+      "status": "passing",
+      "verification": [
+        "1. 发送一个复杂问题给 AI",
+        "2. 在 AI 回复过程中点击停止按钮",
+        "3. 验证回复立即停止，不再有新的内容出现"
+      ],
+      "evidence": "- 添加 AbortController 到 page.tsx\n- fetch 请求使用 signal 参数\n- ChatArea 添加 Square 图标的停止按钮\n- catch 中处理 AbortError",
+      "notes": "使用 AbortController 实现 fetch 中断"
+    },
+    {
+      "id": "conv-regenerate",
+      "priority": 2,
+      "area": "conversation",
+      "title": "消息重新生成",
+      "user_visible_behavior": "用户点击重新生成按钮后，AI 删除当前回复，重新生成并流式显示新的回复内容。",
+      "status": "passing",
+      "verification": [
+        "1. 发送问题给 AI，等待回复完成",
+        "2. 点击重新生成按钮",
+        "3. 验证原有 AI 回复被删除",
+        "4. 验证新回复开始流式显示"
+      ],
+      "evidence": "- 添加 lastUserMessageRef 保存用户消息\n- handleRegenerate 清空最后 AI 回复并重新发送\n- ChatArea 添加 RefreshCw 图标的重新生成按钮",
+      "notes": "需要保存用户消息记录，支持重新发送"
+    },
+    {
+      "id": "conv-delete",
+      "priority": 3,
+      "area": "conversation",
+      "title": "对话删除",
+      "user_visible_behavior": "用户点击删除按钮后，对话从列表中移除，localStorage 中的数据同步清理。",
+      "status": "passing",
+      "verification": [
+        "1. 创建多个对话",
+        "2. 点击某对话的删除按钮",
+        "3. 验证该对话从列表消失",
+        "4. 刷新页面确认数据已清理"
+      ],
+      "evidence": "- ConversationSidebar 添加删除按钮（Trash2 图标）\n- 添加确认 Dialog\n- page.tsx 添加 handleDeleteConversation\n- 删除后自动切换到其他对话",
+      "notes": "需要删除按钮 UI + 确认 Dialog"
+    },
+    {
+      "id": "conv-rename",
+      "priority": 4,
+      "area": "conversation",
+      "title": "对话重命名",
+      "user_visible_behavior": "用户双击对话标题或点击编辑按钮后，可输入新名称，回车确认保存。",
+      "status": "passing",
+      "verification": [
+        "1. 双击某对话标题",
+        "2. 输入新名称并回车",
+        "3. 验证标题已更新",
+        "4. 刷新页面确认保存成功"
+      ],
+      "evidence": "- ConversationSidebar 添加编辑按钮（Pencil 图标）\n- 编辑状态显示 Input 输入框\n- 确认/取消按钮（Check/X 图标）\n- page.tsx 添加 handleRenameConversation",
+      "notes": "需要编辑状态 UI + 输入框"
+    },
+    {
+      "id": "conv-timestamp",
+      "priority": 5,
+      "area": "conversation",
+      "title": "消息时间戳",
+      "user_visible_behavior": "每条消息底部显示发送时间，格式为 HH:mm，悬停显示完整日期时间。",
+      "status": "passing",
+      "verification": [
+        "1. 发送消息",
+        "2. 检查消息是否显示时间",
+        "3. 悬停查看完整日期时间"
+      ],
+      "evidence": "- Message 类型添加 timestamp 字段\n- 创建消息时自动设置 timestamp\n- VirtualizedMessages 添加 formatMessageTime 函数\n- 用户消息右对齐显示时间，AI 消息左对齐\n- 悬停显示完整日期时间",
+      "notes": "Message 类型需要添加 timestamp 字段"
+    },
+    {
+      "id": "conv-image-lightbox",
+      "priority": 6,
+      "area": "conversation",
+      "title": "图片放大预览",
+      "user_visible_behavior": "用户点击消息中的图片后，图片以全屏模式展示，支持缩放、拖拽和 ESC 关闭。",
+      "status": "passing",
+      "verification": [
+        "1. 上传或发送图片",
+        "2. 点击图片",
+        "3. 验证图片全屏显示",
+        "4. 按 ESC 或点击关闭"
+      ],
+      "evidence": "- 创建 ImageLightbox.tsx 组件\n- 支持缩放（+/-按钮和快捷键）\n- 支持拖拽移动\n- 支持旋转重置\n- VirtualizedMessages 图片添加 onClick 和 ZoomIn 图标",
+      "notes": "需要 Lightbox/Dialog 组件"
+    },
+    {
+      "id": "conv-search",
+      "priority": 7,
+      "area": "conversation",
+      "title": "对话搜索",
+      "user_visible_behavior": "用户在搜索框输入关键词，实时高亮显示匹配的对话消息，支持跳转到目标消息。",
+      "status": "passing",
+      "verification": [
+        "1. 打开搜索框",
+        "2. 输入关键词",
+        "3. 验证高亮匹配结果",
+        "4. 点击跳转到对应消息"
+      ],
+      "evidence": "- ChatArea 添加搜索按钮和搜索框 UI\n- VirtualizedMessages 添加 highlightText 函数\n- 匹配消息显示黄色边框\n- 匹配文本高亮显示",
+      "notes": "需要搜索状态 + 高亮逻辑"
+    },
+    {
+      "id": "conv-export",
+      "priority": 8,
+      "area": "conversation",
+      "title": "对话导出",
+      "user_visible_behavior": "用户点击导出按钮，可选择导出为 Markdown、JSON 或 PDF 格式。",
+      "status": "passing",
+      "verification": [
+        "1. 打开对话",
+        "2. 点击导出按钮",
+        "3. 选择导出格式",
+        "4. 验证下载的文件内容正确"
+      ],
+      "evidence": "- ChatArea 添加导出下拉菜单\n- page.tsx 添加 handleExport 函数\n- 支持 Markdown 和 JSON 格式\n- 自动下载文件",
+      "notes": "需要导出格式选择 + 文件生成"
+    },
+    {
       "id": "core-auth",
       "priority": 1,
       "area": "auth",

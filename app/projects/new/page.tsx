@@ -153,7 +153,7 @@ export default function NewProjectPage() {
                 className="cursor-pointer"
               />
               <p className="text-xs text-muted-foreground">
-                Project ID must start with "330"
+                Project ID must start with &quot;330&quot;
               </p>
             </div>
 
@@ -220,7 +220,7 @@ export default function NewProjectPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>What's Next?</CardTitle>
+          <CardTitle>What&apos;s Next?</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3 text-sm">

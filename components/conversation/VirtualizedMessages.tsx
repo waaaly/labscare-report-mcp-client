@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Search,
   Database,
+  ZoomIn,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -19,6 +20,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import React from "react";
 import { prepare, layout } from "@chenglou/pretext";
+import ImageLightbox from "./ImageLightbox";
 
 export type Msg = {
   role: "user" | "assistant";
@@ -26,6 +28,7 @@ export type Msg = {
   isStreaming?: boolean;
   messageType?: "thought" | "tool_call" | "status" | "content";
   files?: FileAttachment[];
+  timestamp?: number;
 };
 
 export type FileAttachment = {
@@ -36,6 +39,59 @@ export type FileAttachment = {
 };
 
 const WIDTH_BUCKET_SIZE = 50;
+
+// 时间格式化函数
+function formatMessageTime(timestamp: number): { short: string; full: string } {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - timestamp;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  // 短格式：显示 HH:mm
+  const short = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // 完整格式：显示日期和时间
+  const isToday = diffDays === 0;
+  const isYesterday = diffDays === 1;
+
+  let full: string;
+  if (isToday) {
+    full = `Today ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  } else if (isYesterday) {
+    full = `Yesterday ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  } else if (diffDays < 7) {
+    full = `${date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  } else {
+    full = date.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  return { short, full };
+}
+
+// 文本高亮函数
+function highlightText(text: string, query: string): React.ReactNode[] {
+  if (!query.trim()) return [text];
+
+  const parts: React.ReactNode[] = [];
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const matches = text.split(regex);
+
+  matches.forEach((part, index) => {
+    if (part.toLowerCase() === query.toLowerCase()) {
+      parts.push(
+        <mark key={index} className="bg-yellow-200 text-yellow-900 rounded px-0.5">
+          {part}
+        </mark>
+      );
+    } else {
+      parts.push(part);
+    }
+  });
+
+  return parts;
+}
 
 function bucketWidth(width: number): number {
   return Math.ceil(width / WIDTH_BUCKET_SIZE) * WIDTH_BUCKET_SIZE;
@@ -108,7 +164,7 @@ const CodeBlock = ({ language, code }: { language: string; code: string }) => {
 };
 
 const MarkdownMessage = React.memo(
-  ({ content }: { content: string }) => {
+  function MarkdownMessage({ content }: { content: string }) {
     return (
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
@@ -131,11 +187,12 @@ const MarkdownMessage = React.memo(
       </ReactMarkdown>
     );
   },
-  (prev, next) => prev.content === next.content,
+  (prevProps, nextProps) => prevProps.content === nextProps.content
 );
+MarkdownMessage.displayName = 'MarkdownMessage';
 
 const ThoughtMessage = React.memo(
-  ({ content, isStreaming }: { content: string; isStreaming?: boolean }) => {
+  function ThoughtMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
     const [isExpanded, setIsExpanded] = React.useState(false);
     const [isPartiallyExpanded, setIsPartiallyExpanded] = React.useState(false);
 
@@ -232,9 +289,10 @@ const ThoughtMessage = React.memo(
   (prev, next) =>
     prev.content === next.content && prev.isStreaming === next.isStreaming,
 );
+ThoughtMessage.displayName = 'ThoughtMessage';
 
 const ToolCallMessage = React.memo(
-  ({ content, isStreaming }: { content: string; isStreaming?: boolean }) => {
+  function ToolCallMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
     return (
       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <Search className="w-4 h-4 text-blue-600" />
@@ -248,9 +306,10 @@ const ToolCallMessage = React.memo(
   (prev, next) =>
     prev.content === next.content && prev.isStreaming === next.isStreaming,
 );
+ToolCallMessage.displayName = 'ToolCallMessage';
 
 const StatusMessage = React.memo(
-  ({ content, isStreaming }: { content: string; isStreaming?: boolean }) => {
+  function StatusMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
     return (
       <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
         <CheckCircle2 className="w-4 h-4 text-green-600" />
@@ -261,10 +320,11 @@ const StatusMessage = React.memo(
   (prev, next) =>
     prev.content === next.content && prev.isStreaming === next.isStreaming,
 );
+StatusMessage.displayName = 'StatusMessage';
 
 // 文件附件渲染组件
 const FileAttachment = React.memo(
-  ({ file }: { file: FileAttachment }) => {
+  function FileAttachment({ file, onImageClick }: { file: FileAttachment; onImageClick?: (src: string, name: string) => void }) {
     const [isExpanded, setIsExpanded] = React.useState(false);
 
     console.log(
@@ -277,12 +337,19 @@ const FileAttachment = React.memo(
 
     if (file.type === "image") {
       return (
-        <div className="mt-2 rounded-lg overflow-hidden border bg-background">
-          <img
-            src={file.content}
-            alt={file.name}
-            className="max-w-full h-auto max-h-64 object-contain"
-          />
+        <div className="mt-2 rounded-lg overflow-hidden border bg-background group">
+          <div className="relative">
+            <img
+              src={file.content}
+              alt={file.name}
+              className="max-w-full h-auto max-h-64 object-contain cursor-zoom-in"
+              onClick={() => onImageClick?.(file.content, file.name)}
+            />
+            {/* 放大图标覆盖层 */}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+              <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          </div>
           <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50">
             {file.name}
           </div>
@@ -352,17 +419,22 @@ const FileAttachment = React.memo(
     prev.file.content === next.file.content &&
     prev.file.type === next.file.type,
 );
+FileAttachment.displayName = 'FileAttachment';
 
 export function VirtualizedMessages({
   messages,
   isLoading,
   messagesEndRef,
   currentStatus = null,
+  searchQuery = '',
+  highlightedMessageIndex,
 }: {
   messages: Msg[];
   isLoading: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   currentStatus?: string | null;
+  searchQuery?: string;
+  highlightedMessageIndex?: number | null;
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [viewportH, setViewportH] = React.useState(0);
@@ -379,6 +451,14 @@ export function VirtualizedMessages({
     font: `14px Inter, ui-sans-serif, system-ui`,
     lineHeight: 20,
   });
+
+  // 图片 Lightbox 状态
+  const [lightboxImage, setLightboxImage] = React.useState<{ src: string; name: string } | null>(null);
+
+  // 图片点击回调
+  const handleImageClick = React.useCallback((src: string, name: string) => {
+    setLightboxImage({ src, name });
+  }, []);
 
   // 节流更新时间戳，避免流式传输时频繁强制更新
   const lastUpdateTimeRef = React.useRef(0);
@@ -642,15 +722,26 @@ export function VirtualizedMessages({
             });
             return (
               <div key={index} className="flex justify-end">
-                <div className="max-w-[80%]">
+                <div
+                  className={`max-w-[80%] ${
+                    highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
+                  }`}
+                >
                   <div className="p-4 rounded-lg bg-primary text-primary-foreground">
-                    {message.content}
+                    {searchQuery ? highlightText(message.content, searchQuery) : message.content}
                   </div>
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {message.files.map((file, fileIndex) => {
-                        return <FileAttachment key={fileIndex} file={file} />;
+                        return <FileAttachment key={fileIndex} file={file} onImageClick={handleImageClick} />;
                       })}
+                    </div>
+                  )}
+                  {message.timestamp && (
+                    <div className="mt-1 text-xs text-muted-foreground text-right">
+                      <span title={formatMessageTime(message.timestamp).full}>
+                        {formatMessageTime(message.timestamp).short}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -688,17 +779,32 @@ export function VirtualizedMessages({
 
           return (
             <div key={index} className="flex justify-start">
-              <div className="max-w-[80%] p-4 rounded-lg bg-muted">
-                {message.isStreaming ? (
-                  (() => {
-                    return (
-                      <pre className="whitespace-pre-wrap">
-                        {message.content}
-                      </pre>
-                    );
-                  })()
-                ) : (
-                  <MarkdownMessage content={message.content} />
+              <div
+                className={`max-w-[80%] ${
+                  highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
+                }`}
+              >
+                <div className="p-4 rounded-lg bg-muted">
+                  {message.isStreaming ? (
+                    (() => {
+                      return (
+                        <pre className="whitespace-pre-wrap">
+                          {message.content}
+                        </pre>
+                      );
+                    })()
+                  ) : searchQuery ? (
+                    <div>{highlightText(message.content, searchQuery)}</div>
+                  ) : (
+                    <MarkdownMessage content={message.content} />
+                  )}
+                </div>
+                {message.timestamp && !message.isStreaming && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    <span title={formatMessageTime(message.timestamp).full}>
+                      {formatMessageTime(message.timestamp).short}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
@@ -713,6 +819,15 @@ export function VirtualizedMessages({
           </div>
         )}
         <div ref={messagesEndRef} />
+        {/* 图片 Lightbox */}
+        {lightboxImage && (
+          <ImageLightbox
+            src={lightboxImage.src}
+            alt={lightboxImage.name}
+            isOpen={!!lightboxImage}
+            onClose={() => setLightboxImage(null)}
+          />
+        )}
       </div>
     );
   }
@@ -783,15 +898,26 @@ export function VirtualizedMessages({
             });
             return (
               <div key={index} ref={assignRef} className="flex justify-end">
-                <div className="max-w-[80%]">
+                <div
+                  className={`max-w-[80%] ${
+                    highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
+                  }`}
+                >
                   <div className="p-4 rounded-lg bg-primary text-primary-foreground">
-                    {message.content}
+                    {searchQuery ? highlightText(message.content, searchQuery) : message.content}
                   </div>
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {message.files.map((file, fileIndex) => {
-                        return <FileAttachment key={fileIndex} file={file} />;
+                        return <FileAttachment key={fileIndex} file={file} onImageClick={handleImageClick} />;
                       })}
+                    </div>
+                  )}
+                  {message.timestamp && (
+                    <div className="mt-1 text-xs text-muted-foreground text-right">
+                      <span title={formatMessageTime(message.timestamp).full}>
+                        {formatMessageTime(message.timestamp).short}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -829,17 +955,32 @@ export function VirtualizedMessages({
 
           return (
             <div key={index} ref={assignRef} className="flex justify-start">
-              <div className="max-w-[80%] p-4 rounded-lg bg-muted">
-                {message.isStreaming ? (
-                  (() => {
-                    return (
-                      <pre className="whitespace-pre-wrap">
-                        {message.content}
-                      </pre>
-                    );
-                  })()
-                ) : (
-                  <MarkdownMessage content={message.content} />
+              <div
+                className={`max-w-[80%] ${
+                  highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
+                }`}
+              >
+                <div className="p-4 rounded-lg bg-muted">
+                  {message.isStreaming ? (
+                    (() => {
+                      return (
+                        <pre className="whitespace-pre-wrap">
+                          {message.content}
+                        </pre>
+                      );
+                    })()
+                  ) : searchQuery ? (
+                    <div>{highlightText(message.content, searchQuery)}</div>
+                  ) : (
+                    <MarkdownMessage content={message.content} />
+                  )}
+                </div>
+                {message.timestamp && !message.isStreaming && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    <span title={formatMessageTime(message.timestamp).full}>
+                      {formatMessageTime(message.timestamp).short}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
@@ -855,7 +996,17 @@ export function VirtualizedMessages({
           </div>
         )}
         <div ref={messagesEndRef} />
+        {/* 图片 Lightbox */}
+        {lightboxImage && (
+          <ImageLightbox
+            src={lightboxImage.src}
+            alt={lightboxImage.name}
+            isOpen={!!lightboxImage}
+            onClose={() => setLightboxImage(null)}
+          />
+        )}
       </div>
     </div>
+
   );
 }

@@ -374,7 +374,7 @@ const DocumentViewer = forwardRef<DocumentViewerHandle, DocumentViewerProps>(
                     {getFileIcon(selectedDocument.type)}
                     <p className="text-gray-600 mt-4 mb-2">Document Preview</p>
                     <p className="text-sm text-gray-500 text-center max-w-md">
-                      This document type is supported for extraction. Click "Open in New Tab" to view the full document.
+                      This document type is supported for extraction. Click &quot;Open in New Tab&quot; to view the full document.
                     </p>
                   </div>
                 )}

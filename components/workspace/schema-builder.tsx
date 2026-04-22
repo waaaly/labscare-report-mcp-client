@@ -48,7 +48,7 @@ export default function SchemaBuilder({ projectId }: SchemaBuilderProps) {
         <CardContent>
           {fields.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No fields defined yet. Click "Add Field" to start building your schema.
+              No fields defined yet. Click &quot;Add Field&quot; to start building your schema.
             </div>
           ) : (
             <div className="space-y-4">

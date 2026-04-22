@@ -12,6 +12,7 @@ interface Message {
   isStreaming?: boolean;
   messageType?: 'thought' | 'tool_call' | 'status' | 'content';
   files?: FileAttachment[];
+  timestamp?: number;
 }
 
 interface FileAttachment {
@@ -54,6 +55,16 @@ export default function LLMConversationPage() {
   const [conversations, setConversations] = useState<{ id: string; title: string; createdAt: number }[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  // 搜索状态
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
+
+  // 停止生成：AbortController ref
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 重新生成：保存最后一次用户消息
+  const lastUserMessageRef = useRef<{ text: string; files: File[] } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -147,9 +158,48 @@ export default function LLMConversationPage() {
     setInput('');
   }, [currentId, msgKey]);
 
+  // 删除对话
+  const handleDeleteConversation = useCallback((id: string) => {
+    // 如果删除的是当前对话，切换到第一个
+    if (id === currentId) {
+      const remaining = conversations.filter(c => c.id !== id);
+      if (remaining.length > 0) {
+        selectConversation(remaining[0].id);
+      } else {
+        // 创建新对话
+        createNewConversation();
+      }
+    }
+    // 从列表移除
+    setConversations(prev => {
+      const next = prev.filter(c => c.id !== id);
+      localStorage.setItem(LS_CONV_LIST, JSON.stringify(next));
+      return next;
+    });
+    // 删除消息
+    localStorage.removeItem(msgKey(id));
+    addLog(`Deleted conversation: ${id}`);
+  }, [currentId, conversations, msgKey, LS_CONV_LIST, selectConversation, createNewConversation, addLog]);
+
+  // 重命名对话
+  const handleRenameConversation = useCallback((id: string, newTitle: string) => {
+    setConversations(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, title: newTitle } : c);
+      localStorage.setItem(LS_CONV_LIST, JSON.stringify(next));
+      return next;
+    });
+    addLog(`Renamed conversation: ${id} -> ${newTitle}`);
+  }, [LS_CONV_LIST, addLog]);
+
   const handleSend = useCallback(async (inputText: string) => {
     console.log('handleSend', inputText, selectedFiles);
     if (!inputText.trim() && selectedFiles.length === 0) return;
+
+    // 保存用户消息供重新生成使用
+    lastUserMessageRef.current = { text: inputText, files: selectedFiles };
+
+    // 创建 AbortController 用于停止生成
+    abortControllerRef.current = new AbortController();
 
     // 处理文件附件
     const fileAttachments: FileAttachment[] = [];
@@ -191,7 +241,8 @@ export default function LLMConversationPage() {
     const userMessage: Message = {
       role: 'user',
       content: inputText.trim(),
-      files: fileAttachments.length > 0 ? fileAttachments : undefined
+      files: fileAttachments.length > 0 ? fileAttachments : undefined,
+      timestamp: Date.now(),
     };
 
     // 只有当有文本内容或文件时才添加用户消息
@@ -230,6 +281,7 @@ export default function LLMConversationPage() {
       response = await fetch('/api/llm', {
         method: 'POST',
         body: formData,
+        signal: abortControllerRef.current.signal,
       });
 
 
@@ -278,7 +330,7 @@ export default function LLMConversationPage() {
                     if (lastMsg?.messageType === 'content' || (lastMsg?.role === 'assistant' && !lastMsg?.messageType)) {
                       newMessages = [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text, messageType: 'content', isStreaming: true }];
                     } else {
-                      newMessages = [...prev, { role: 'assistant', content: json.text, messageType: 'content', isStreaming: true }];
+                      newMessages = [...prev, { role: 'assistant', content: json.text, messageType: 'content', isStreaming: true, timestamp: Date.now() }];
                     }
                     return newMessages;
                   });
@@ -288,7 +340,7 @@ export default function LLMConversationPage() {
                     if (lastMsg?.messageType === 'thought') {
                       return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text }];
                     } else {
-                      return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true }];
+                      return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true, timestamp: Date.now() }];
                     }
                   });
                   console.log(`[Client] 处理thought消息，内容: "${json.text.substring(0, 30)}..."`);
@@ -299,7 +351,7 @@ export default function LLMConversationPage() {
                     if (lastMsg?.messageType === 'tool_call') {
                       return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.message }];
                     } else {
-                      return [...prev, { role: 'assistant', content: json.message, messageType: 'tool_call', isStreaming: true }];
+                      return [...prev, { role: 'assistant', content: json.message, messageType: 'tool_call', isStreaming: true, timestamp: Date.now() }];
                     }
                   });
                   console.log(`[Client] 处理tool_call消息，工具: ${json.tool}`);
@@ -345,20 +397,29 @@ export default function LLMConversationPage() {
           setConversations(prev => prev.map(c => (c.id === currentId ? { ...c, title: preview || 'Conversation' } : c)));
         }
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setMessages(prev => {
-        const errorMsg: Message = {
-          role: 'assistant',
-          content: 'Sorry, I encountered an error. Please try again.',
-          messageType: 'content',
-          isStreaming: false
-        };
-        return [...prev, errorMsg];
-      });
-      addLog('Error');
+    } catch (error: any) {
+      // 检查是否是用户主动停止
+      if (error?.name === 'AbortError') {
+        console.log('[Client] 请求已被用户停止');
+        addLog('Stopped');
+        // 保持当前消息状态不变
+      } else {
+        console.error('Error sending message:', error);
+        setMessages(prev => {
+          const errorMsg: Message = {
+            role: 'assistant',
+            content: 'Sorry, I encountered an error. Please try again.',
+            messageType: 'content',
+            isStreaming: false,
+            timestamp: Date.now(),
+          };
+          return [...prev, errorMsg];
+        });
+        addLog('Error');
+      }
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
       if (selectedFiles.length > 0) {
         // 清理已发送文件引用
         // 仅清空选中文件状态，实际文件释放由子组件负责 revokeObjectURL
@@ -377,6 +438,125 @@ export default function LLMConversationPage() {
     }
   }, [addLog]);
 
+  // 停止生成
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      console.log('[Client] 已发送停止信号');
+      addLog('Stopped by user');
+    }
+    setIsLoading(false);
+    // 将流式消息标记为已完成
+    setMessages(prev => prev.map(msg => ({
+      ...msg,
+      isStreaming: false
+    })));
+  }, [addLog]);
+
+  // 重新生成
+  const handleRegenerate = useCallback(() => {
+    if (lastUserMessageRef.current) {
+      const { text, files } = lastUserMessageRef.current;
+      // 清空最后一条 AI 回复（如果有）
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // 移除最后一条 assistant 消息
+        while (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+          newMessages.pop();
+        }
+        return newMessages;
+      });
+      // 重新发送
+      setSelectedFiles(files);
+      // 调用 handleSend
+      if (text.trim()) {
+        setInput(text);
+        // 延迟一点确保状态更新
+        setTimeout(() => {
+          handleSend(text);
+        }, 0);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSend, setMessages, setSelectedFiles, setInput]);
+
+  // 搜索处理
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (query.trim()) {
+      // 查找第一个匹配的消息
+      const index = messages.findIndex(m =>
+        m.content.toLowerCase().includes(query.toLowerCase())
+      );
+      setHighlightedMessageIndex(index >= 0 ? index : null);
+    } else {
+      setHighlightedMessageIndex(null);
+    }
+  }, [messages]);
+
+  // 导出对话
+  const handleExport = useCallback((format: 'markdown' | 'json') => {
+    const convTitle = conversations.find(c => c.id === currentId)?.title || 'conversation';
+    let content: string;
+    let filename: string;
+    let mimeType: string;
+
+    if (format === 'markdown') {
+      // 转换为 Markdown 格式
+      const lines = [`# ${convTitle}\n\n`];
+      messages.forEach((msg, idx) => {
+        const role = msg.role === 'user' ? 'User' : 'Assistant';
+        const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '';
+        lines.push(`## ${role} (${time})\n\n`);
+        lines.push(`${msg.content}\n\n`);
+        if (msg.files && msg.files.length > 0) {
+          msg.files.forEach(f => {
+            if (f.type === 'image') {
+              lines.push(`![${f.name}](${f.name})\n\n`);
+            } else {
+              lines.push(`**${f.name}**:\n\`\`\`\n${f.content}\n\`\`\`\n\n`);
+            }
+          });
+        }
+      });
+      content = lines.join('');
+      filename = `${convTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')}.md`;
+      mimeType = 'text/markdown';
+    } else {
+      // 转换为 JSON 格式
+      const exportData = {
+        title: convTitle,
+        exportedAt: new Date().toISOString(),
+        messages: messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          messageType: msg.messageType,
+          files: msg.files?.map(f => ({
+            name: f.name,
+            type: f.type,
+            content: f.type === 'image' ? '[Image Data]' : f.content,
+          })),
+        })),
+      };
+      content = JSON.stringify(exportData, null, 2);
+      filename = `${convTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')}.json`;
+      mimeType = 'application/json';
+    }
+
+    // 下载文件
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    addLog(`Exported conversation as ${format.toUpperCase()}`);
+  }, [messages, conversations, currentId, addLog]);
+
   return (
     <div className="flex gap-4 h-[calc(100vh-var(--header-h,10rem))] overflow-hidden bg-background">
       <div className="w-[260px] h-full border-r flex-shrink-0">
@@ -385,6 +565,8 @@ export default function LLMConversationPage() {
           currentId={currentId}
           onSelect={selectConversation}
           onNew={createNewConversation}
+          onDelete={handleDeleteConversation}
+          onRename={handleRenameConversation}
         />
       </div>
       <div className="flex-1 h-full flex flex-col min-w-0">
@@ -394,9 +576,15 @@ export default function LLMConversationPage() {
           isLoading={isLoading}
           input={input}
           onSend={handleSend}
+          onStop={handleStop}
+          onRegenerate={handleRegenerate}
           messagesEndRef={messagesEndRef}
           onFilesChange={handleSendFiles}
           currentStatus={currentStatus}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          highlightedMessageIndex={highlightedMessageIndex}
+          onExport={handleExport}
         />
       </div>
       <div className="w-[320px] h-full border-l flex-shrink-0">

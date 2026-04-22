@@ -3,7 +3,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { VirtualizedMessages, Msg } from './VirtualizedMessages';
 
@@ -14,9 +21,18 @@ type Props = {
   isLoading: boolean;
   input: string;
   onSend: (input: string) => void;
+  onStop?: () => void;
+  onRegenerate?: () => void;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   onFilesChange: (files: File[]) => void;
   currentStatus?: string | null;
+  // 搜索相关
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  highlightedMessageIndex?: number | null;
+  onHighlightedIndexChange?: (index: number | null) => void;
+  // 导出相关
+  onExport?: (format: 'markdown' | 'json') => void;
 };
 
 export default function ChatArea({
@@ -25,13 +41,21 @@ export default function ChatArea({
   isLoading,
   input,
   onSend,
+  onStop,
+  onRegenerate,
   messagesEndRef,
   onFilesChange,
   currentStatus = null,
+  searchQuery = '',
+  onSearchChange,
+  highlightedMessageIndex,
+  onHighlightedIndexChange,
+  onExport,
 }: Props) {
   const [attachments, setAttachments] = React.useState<{ file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [localInput, setLocalInput] = React.useState(input);
+  const [showSearch, setShowSearch] = React.useState(false);
 
   const addFiles = React.useCallback((files: FileList | File[]) => {
     const list = Array.from(files);
@@ -207,8 +231,65 @@ export default function ChatArea({
   );
   return (
     <Card className="h-full flex flex-col">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="truncate">{title}</CardTitle>
+        {showSearch ? (
+          <div className="flex items-center gap-1 flex-1 max-w-[200px] ml-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => onSearchChange?.(e.target.value)}
+                placeholder="Search..."
+                className="pl-8 h-8 text-sm"
+                autoFocus
+              />
+            </div>
+            {searchQuery && (
+              <span className="text-xs text-muted-foreground">
+                {highlightedMessageIndex !== null ? highlightedMessageIndex + 1 : 0}
+              </span>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => {
+                setShowSearch(false);
+                onSearchChange?.('');
+                onHighlightedIndexChange?.(null);
+              }}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={() => setShowSearch(true)}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        )}
+        {onExport && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8 ml-1">
+                <Download className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onExport('markdown')}>
+                Export as Markdown
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExport('json')}>
+                Export as JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </CardHeader>
       <CardContent className="flex-1 overflow-auto">
         <VirtualizedMessages
@@ -216,6 +297,8 @@ export default function ChatArea({
           isLoading={isLoading}
           messagesEndRef={messagesEndRef}
           currentStatus={currentStatus}
+          searchQuery={searchQuery}
+          highlightedMessageIndex={highlightedMessageIndex}
         />
       </CardContent>
       <div className="p-4 border-t">
@@ -291,29 +374,54 @@ export default function ChatArea({
                   className="hidden"
                   onChange={handleFileChange}
                 />
-                <Button
-                  size="icon"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-9 w-9 rounded-full"
-                  aria-label="Attach files"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  onClick={handleSendClick}
-                  disabled={isLoading || (!localInput.trim() && attachments.length === 0)}
-                  className="h-9 w-9 rounded-full"
-                  aria-label="Send message"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
+                {isLoading ? (
+                  <>
+                    {/* 停止生成按钮 */}
+                    <Button
+                      size="icon"
+                      type="button"
+                      variant="destructive"
+                      onClick={onStop}
+                      className="h-9 w-9 rounded-full"
+                      aria-label="Stop generating"
+                    >
+                      <Square className="h-4 w-4" />
+                    </Button>
+                    {/* 重新生成按钮 */}
+                    <Button
+                      size="icon"
+                      type="button"
+                      variant="secondary"
+                      onClick={onRegenerate}
+                      className="h-9 w-9 rounded-full"
+                      aria-label="Regenerate response"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      size="icon"
+                      type="button"
+                      variant="secondary"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="h-9 w-9 rounded-full"
+                      aria-label="Attach files"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      onClick={handleSendClick}
+                      disabled={(!localInput.trim() && attachments.length === 0)}
+                      className="h-9 w-9 rounded-full"
+                      aria-label="Send message"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>

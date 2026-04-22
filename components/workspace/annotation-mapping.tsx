@@ -42,7 +42,7 @@ export default function AnnotationMapping({ projectId }: AnnotationMappingProps)
         <CardContent>
           {mappings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No mappings yet. Click "Add Mapping" to create your first field mapping.
+              No mappings yet. Click &quot;Add Mapping&quot; to create your first field mapping.
             </div>
           ) : (
             <div className="space-y-4">

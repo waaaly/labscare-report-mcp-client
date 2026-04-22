@@ -51,7 +51,7 @@ export default function KnowledgeCenterPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Knowledge Center</h1>
           <p className="text-muted-foreground">
-            Manage {currentLab.name}'s knowledge base and extraction rules
+            Manage {currentLab.name}&apos;s knowledge base and extraction rules
           </p>
         </div>
       </div>
