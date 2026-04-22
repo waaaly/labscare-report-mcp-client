@@ -37,6 +37,7 @@ export function useMinioResource<T = any>(urlPath: string | null) {
 
   useEffect(() => {
     if (urlPath) {
+      console.log('urlPath', urlPath);
       fetchData(urlPath);
     } else {
       setData(null);

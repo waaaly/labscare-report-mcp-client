@@ -1,7 +1,12 @@
 import Redis from 'ioredis';
 import { Queue, Worker, Job } from 'bullmq';
 import { logger } from '../logger';
+// 队列名称
+export const DOCUMENT_STATUS_PREFIX = 'document:status:';
 
+//worker名称
+export const DOCUMENT_PROCESSOR_WORKER_NAME = 'document-processing';
+export const TASK_PROCESSOR_WORKER_NAME = 'task-processing';
 // Redis 客户端单例
 class RedisClientSingleton {
   private static instance: Redis; // 用于普通操作
@@ -42,12 +47,7 @@ class RedisClientSingleton {
 const redisClient = RedisClientSingleton.getInstance();
 const redisSubClient = RedisClientSingleton.getSubInstance();
 
-// 队列名称
-export const DOCUMENT_STATUS_PREFIX = 'document:status:';
 
-//worker名称
-export const DOCUMENT_PROCESSOR_WORKER_NAME = 'document-processing';
-export const TASK_PROCESSOR_WORKER_NAME = 'task-processing';
 // ===== Redis 配置 =====
 
 export function getRedisConfig() {
