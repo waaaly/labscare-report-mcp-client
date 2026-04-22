@@ -26,7 +26,7 @@ let sharedLlm: ChatOpenAI | null = null;
  * 获取共享的 LLM 实例
  * 使用连接池复用 HTTP 连接，降低初始化开销
  */
-async function getSharedLlm(): Promise<ChatOpenAI> {
+export async function getSharedLlm(): Promise<ChatOpenAI> {
   if (!sharedLlm) {
     const maxConcurrency = Number(process.env.LLM_MAX_CONCURRENCY || 10);
     const timeout = Number(process.env.LLM_TIMEOUT || 120000);

@@ -33,6 +33,12 @@ type Props = {
   onHighlightedIndexChange?: (index: number | null) => void;
   // 导出相关
   onExport?: (format: 'markdown' | 'json') => void;
+
+  // 分支管理相关
+  currentBranchId?: string;
+  onSwitchBranch?: (branchId: string) => void;
+  branches?: { id: string; name: string; createdAt: number }[];
+  onCreateBranch?: (messageIndex: number) => void;
 };
 
 export default function ChatArea({
@@ -51,6 +57,10 @@ export default function ChatArea({
   highlightedMessageIndex,
   onHighlightedIndexChange,
   onExport,
+  currentBranchId = 'main',
+  onSwitchBranch,
+  branches = [],
+  onCreateBranch,
 }: Props) {
   const [attachments, setAttachments] = React.useState<{ file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -233,6 +243,26 @@ export default function ChatArea({
     <Card className="h-full flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="truncate">{title}</CardTitle>
+        {/* 分支选择下拉菜单 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="ghost" className="h-8 px-3 mr-2">
+              {branches.find(b => b.id === currentBranchId)?.name || currentBranchId}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {branches.map((branch) => (
+              <DropdownMenuItem 
+                key={branch.id} 
+                onClick={() => onSwitchBranch?.(branch.id)}
+                className={currentBranchId === branch.id ? 'bg-primary/10' : ''}
+              >
+                {branch.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {showSearch ? (
           <div className="flex items-center gap-1 flex-1 max-w-[200px] ml-2">
             <div className="relative flex-1">
@@ -247,7 +277,7 @@ export default function ChatArea({
             </div>
             {searchQuery && (
               <span className="text-xs text-muted-foreground">
-                {highlightedMessageIndex !== null ? highlightedMessageIndex + 1 : 0}
+                {highlightedMessageIndex !== null && highlightedMessageIndex !== undefined ? highlightedMessageIndex + 1 : 0}
               </span>
             )}
             <Button

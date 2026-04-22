@@ -6,6 +6,8 @@ import ConversationSidebar from '@/components/conversation/ConversationSidebar';
 import ChatArea from '@/components/conversation/ChatArea';
 import AgentToolPanel from '@/components/conversation/AgentToolPanel';
 import WelcomeCard from '@/components/conversation/WelcomeCard';
+import { availableModels } from '@/lib/llm/model-config';
+
 
 interface Message {
   role: 'user' | 'assistant';
@@ -14,6 +16,8 @@ interface Message {
   messageType?: 'thought' | 'tool_call' | 'status' | 'content';
   files?: FileAttachment[];
   timestamp?: number;
+  branchId?: string; // 分支 ID，用于标识消息所属的分支
+  parentId?: string; // 父消息 ID，用于构建分支结构
 }
 
 interface FileAttachment {
@@ -23,30 +27,6 @@ interface FileAttachment {
   preview?: string;
 }
 
-/**
- * TODO：
- * ### 第一阶段（核心功能）
-1. ✅ 停止生成功能
-2. ✅ 消息重新生成
-3. ✅ 消息复制按钮
-4. ✅ 代码高亮和复制
-5. ✅ 对话删除和重命名
-6. ✅ 文件删除（发送前）
-### 第二阶段（体验优化）
-1. ✅ Markdown 完整渲染
-2. ✅ 快捷键支持
-3. ✅ 消息时间戳
-4. ✅ 拖拽上传文件
-5. ✅ 图片放大查看
-6. ✅ 工具调用可视化
-### 第三阶段（高级功能）
-1. ✅ 消息编辑和重新生成
-2. ✅ 对话导出
-3. ✅ 模型切换
-4. ✅ 消息分支
-5. ✅ 对话搜索
- * @returns 
- */
 export default function LLMConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +40,15 @@ export default function LLMConversationPage() {
   // 搜索状态
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
+
+  // 模型切换状态
+  const [currentModel, setCurrentModel] = useState<string>('gpt-5.3-codex');
+
+  // 分支管理状态
+  const [currentBranchId, setCurrentBranchId] = useState<string>('main');
+  const [branches, setBranches] = useState<{ id: string; name: string; createdAt: number }[]>([
+    { id: 'main', name: '主分支', createdAt: Date.now() }
+  ]);
 
   // 停止生成：AbortController ref
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -151,6 +140,7 @@ export default function LLMConversationPage() {
     setCurrentId(id);
     setMessages([]);
     setInput('');
+    setIsShowWelcome(true);
     try {
       localStorage.setItem(msgKey(id), JSON.stringify([]));
     } catch { }
@@ -305,12 +295,15 @@ export default function LLMConversationPage() {
       let response: Response;
       const formData = new FormData();
       formData.append('prompt', input.trim());
-      formData.append('contextJson', JSON.stringify({ conversationId: currentId, messagesCount: newMessages.length }));
+      formData.append('contextJson', JSON.stringify({ 
+        conversationId: currentId, 
+        messagesCount: newMessages.length,
+      }));
       const standardMessages = newMessages
         .filter(msg => !msg.isStreaming && msg.content)
         .map(msg => ({ role: msg.role, content: msg.content }));
       formData.append('messagesJson', JSON.stringify(standardMessages));
-
+      formData.append('model', currentModel);
       if (selectedFiles.length > 0) {
         selectedFiles.forEach((file) => {
           formData.append('files', file);
@@ -466,7 +459,7 @@ export default function LLMConversationPage() {
         setSelectedFiles([]);
       }
     }
-  }, [input, messages, scrollToBottom, addLog, conversations, currentId, selectedFiles]);
+  }, [input, messages, scrollToBottom, addLog, conversations, currentId, selectedFiles,currentModel]);
 
   const handleSendFiles = useCallback((files: File[]) => {
     console.log('[Client] 处理文件上传:', files);
@@ -531,6 +524,47 @@ export default function LLMConversationPage() {
       setHighlightedMessageIndex(null);
     }
   }, [messages]);
+
+  // 模型切换处理
+  const handleModelChange = useCallback((modelValue: string) => {
+    setCurrentModel(modelValue);
+    console.log(modelValue)
+    addLog(`Switched model to: ${modelValue}`);
+  }, [addLog]);
+
+  // 创建分支
+  const handleCreateBranch = useCallback((messageIndex: number) => {
+    const message = messages[messageIndex];
+    if (!message) return;
+
+    const branchId = `branch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const newBranch = {
+      id: branchId,
+      name: `分支 ${branches.length + 1}`,
+      createdAt: Date.now()
+    };
+
+    // 创建新分支
+    setBranches(prev => [...prev, newBranch]);
+    setCurrentBranchId(branchId);
+
+    // 复制当前消息及其之前的所有消息到新分支
+    const messagesUpToSelected = messages.slice(0, messageIndex + 1);
+    const newMessages = messagesUpToSelected.map(msg => ({
+      ...msg,
+      branchId: branchId
+    }));
+
+    setMessages(newMessages);
+    addLog(`Created branch ${branchId} from message ${messageIndex}`);
+  }, [messages, branches, addLog]);
+
+  // 切换分支
+  const handleSwitchBranch = useCallback((branchId: string) => {
+    setCurrentBranchId(branchId);
+    // 这里可以添加加载对应分支消息的逻辑
+    addLog(`Switched to branch ${branchId}`);
+  }, [addLog]);
 
   // 导出对话
   const handleExport = useCallback((format: 'markdown' | 'json') => {
@@ -638,6 +672,13 @@ export default function LLMConversationPage() {
         <AgentToolPanel 
           logs={logs}
           onInsertPrompt={handleInsertPrompt}
+          currentModel={currentModel}
+          onModelChange={handleModelChange}
+          availableModels={availableModels.map(model => ({
+            id: `${model.model}`,
+            name: model.name,
+            description: `${model.model}`
+          }))}
         />
       </div>
     </div>

@@ -29,6 +29,8 @@ export type Msg = {
   messageType?: "thought" | "tool_call" | "status" | "content";
   files?: FileAttachment[];
   timestamp?: number;
+  branchId?: string;
+  parentId?: string;
 };
 
 export type FileAttachment = {
@@ -428,6 +430,7 @@ export function VirtualizedMessages({
   currentStatus = null,
   searchQuery = '',
   highlightedMessageIndex,
+  onCreateBranch,
 }: {
   messages: Msg[];
   isLoading: boolean;
@@ -435,6 +438,7 @@ export function VirtualizedMessages({
   currentStatus?: string | null;
   searchQuery?: string;
   highlightedMessageIndex?: number | null;
+  onCreateBranch?: (messageIndex: number) => void;
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [viewportH, setViewportH] = React.useState(0);
@@ -727,8 +731,20 @@ export function VirtualizedMessages({
                     highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
                   }`}
                 >
-                  <div className="p-4 rounded-lg bg-primary text-primary-foreground">
+                  <div className="p-4 rounded-lg bg-primary text-primary-foreground relative">
                     {searchQuery ? highlightText(message.content, searchQuery) : message.content}
+                    {onCreateBranch && (
+                      <button
+                        onClick={() => onCreateBranch(index)}
+                        className="absolute top-2 right-2 p-1 rounded-md bg-primary-foreground/10 hover:bg-primary-foreground/20 transition-colors"
+                        aria-label="Create branch"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-2">
@@ -903,8 +919,20 @@ export function VirtualizedMessages({
                     highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
                   }`}
                 >
-                  <div className="p-4 rounded-lg bg-primary text-primary-foreground">
+                  <div className="p-4 rounded-lg bg-primary text-primary-foreground relative">
                     {searchQuery ? highlightText(message.content, searchQuery) : message.content}
+                    {onCreateBranch && (
+                      <button
+                        onClick={() => onCreateBranch(index)}
+                        className="absolute top-2 right-2 p-1 rounded-md bg-primary-foreground/10 hover:bg-primary-foreground/20 transition-colors"
+                        aria-label="Create branch"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-2">

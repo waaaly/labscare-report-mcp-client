@@ -56,6 +56,7 @@ type Props = {
     name: string;
     description?: string;
     enabled?: boolean;
+    icon: typeof FileCode | typeof Search | typeof Database | typeof Zap;
   }>;
 };
 
@@ -75,7 +76,7 @@ const defaultTools = [
 
 export default function AgentToolPanel({
   logs = [],
-  currentModel = 'gpt-4o',
+  currentModel,
   onModelChange,
   tokenUsage,
   onInsertPrompt,
@@ -83,11 +84,12 @@ export default function AgentToolPanel({
   availableTools,
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [toolsExpanded, setToolsExpanded] = useState(true);
-  const [modelsExpanded, setModelsExpanded] = useState(true);
-
   const models = availableModels || defaultModels;
   const tools = availableTools || defaultTools;
+
+  const handleModelChange = (value: string) => {
+    onModelChange?.(value);
+  };
 
   return (
     <Card className="h-full flex flex-col bg-gradient-to-b from-background to-muted/20">
@@ -112,27 +114,21 @@ export default function AgentToolPanel({
 
       <CardContent className="flex-1 overflow-hidden p-0">
         {isExpanded && (
-          <Tabs defaultValue="api-tools" className="h-full flex flex-col">
+          <Tabs defaultValue="model" className="h-full flex flex-col">
             <TabsList className="w-full grid grid-cols-3 rounded-none border-b bg-muted/30 h-10">
+            <TabsTrigger value="model" className="text-xs gap-1">
+                <Sparkles className="h-3 w-3" />
+                模型
+              </TabsTrigger>
               <TabsTrigger value="api-tools" className="text-xs gap-1">
                 <Wrench className="h-3 w-3" />
                 API工具
-              </TabsTrigger>
-              <TabsTrigger value="model" className="text-xs gap-1">
-                <Sparkles className="h-3 w-3" />
-                模型
               </TabsTrigger>
               <TabsTrigger value="tools" className="text-xs gap-1">
                 <Cpu className="h-3 w-3" />
                 工具
               </TabsTrigger>
             </TabsList>
-
-            {/* API 工具标签页 */}
-            <TabsContent value="api-tools" className="flex-1 overflow-auto p-4 mt-0">
-              <ApiToolsPanel onInsertPrompt={onInsertPrompt} />
-            </TabsContent>
-
             {/* 模型选择标签页 */}
             <TabsContent value="model" className="flex-1 overflow-auto p-4 mt-0 space-y-4">
               {/* 模型选择 */}
@@ -141,7 +137,7 @@ export default function AgentToolPanel({
                   <Bot className="h-4 w-4" />
                   <span>模型选择</span>
                 </div>
-                <Select value={currentModel} onValueChange={onModelChange}>
+                <Select value={currentModel} onValueChange={handleModelChange}>
                   <SelectTrigger className="w-full h-10 bg-muted/50 border-transparent hover:border-violet-200">
                     <SelectValue placeholder="选择模型" />
                   </SelectTrigger>
@@ -237,6 +233,11 @@ export default function AgentToolPanel({
                   )}
                 </div>
               </section>
+            </TabsContent>
+
+            {/* API 工具标签页 */}
+            <TabsContent value="api-tools" className="flex-1 overflow-auto p-4 mt-0">
+              <ApiToolsPanel onInsertPrompt={onInsertPrompt} />
             </TabsContent>
 
             {/* 工具标签页 */}

@@ -4,6 +4,7 @@ import { Buffer } from 'buffer';
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { logger} from '@/lib/logger'
 import { writeToFile } from '@/lib/logger-to-file'
+import { availableModels } from '@/lib/llm/model-config';
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // T0: 请求开始
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
     const prompt = (formData.get('prompt') as string) || '';
     const contextJson = (formData.get('contextJson') as string) || '';
     const messagesJson = (formData.get('messagesJson') as string) || null;
+    const model = (formData.get('model') as string) || 'gpt-4o';
     const files = (formData.getAll('files') as File[]) || [];
 
     let userText = prompt || '';
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
     logger.info('5. 文件处理优化:'+ processedFiles.length + ' 个文件，避免重复读取');
     logger.info('6. 消息处理优化:'+ (messagesJson ? '只处理最后10条消息' : '无消息历史'));
 
-    const agent = await getAgent();
+    const agent = await getAgent(availableModels.find(m => m.model === model) || availableModels[0]);
     const eventStream = await agent.stream({ messages: inputMessages }, { streamMode: [ 'updates', 'messages',] });
     const streamStart = Date.now();
     logger.info('Graph 开始执行:'+ (streamStart - startTime) + ' ms');
