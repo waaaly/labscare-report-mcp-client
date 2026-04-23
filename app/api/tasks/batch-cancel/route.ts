@@ -9,8 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 import { getReportQueue } from '@/lib/redis/client';
 import prisma from '@/lib/prisma';
-
-
+import { TaskStatus } from '@prisma/client';
 
 // ===== 类型定义 =====
 
@@ -67,7 +66,7 @@ export async function POST(request: NextRequest) {
           // 3. 更新 PostgreSQL 中的任务状态
           await tx.task.update({
             where: { id: taskId },
-            data: { status: 'cancelled' },
+            data: { status: TaskStatus.CANCELLED },
           });
 
           results.cancelled.push(taskId);

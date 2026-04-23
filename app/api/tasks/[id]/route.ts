@@ -10,6 +10,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 import { getReportQueue } from '@/lib/redis/client';
 import prisma from '@/lib/prisma';
+import { TaskStatus } from '@prisma/client';
+
+// 状态映射：Prisma TaskStatus -> API Response Status
+const taskStatusToApiStatus = (status: TaskStatus): 'waiting' | 'active' | 'completed' | 'failed' | 'cancelled' => {
+  switch (status) {
+    case TaskStatus.PENDING: return 'waiting';
+    case TaskStatus.RUNNING: return 'active';
+    case TaskStatus.COMPLETED: return 'completed';
+    case TaskStatus.FAILED: return 'failed';
+    case TaskStatus.CANCELLED: return 'cancelled';
+    default: return 'waiting';
+  }
+};
 
 // ===== 类型定义 =====
 
@@ -59,7 +72,7 @@ export async function GET(
     const response: TaskDetailResponse = {
       id: dbTask.id,
       name: dbTask.name,
-      status: dbTask.status as TaskDetailResponse['status'],
+      status: taskStatusToApiStatus(dbTask.status),
       progress: dbTask.progress,
       materials: dbTask.report?.documents.map(document => ({
         id: document.id,
@@ -119,7 +132,7 @@ export async function DELETE(
       // 3. 更新 PostgreSQL 中的任务状态
       await tx.task.update({
         where: { id },
-        data: { status: 'cancelled' },
+        data: { status: TaskStatus.CANCELLED },
       });
     });
 
@@ -127,7 +140,7 @@ export async function DELETE(
 
     return NextResponse.json({
       id,
-      status: 'cancelled',
+      status: 'cancelled' as const,
     });
 
   } catch (error) {

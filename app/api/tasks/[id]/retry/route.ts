@@ -9,8 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 import { getReportQueue } from '@/lib/redis/client';
 import prisma from '@/lib/prisma';
-
-
+import { TaskStatus } from '@prisma/client';
 
 // ===== POST /api/tasks/[id]/retry =====
 
@@ -29,7 +28,7 @@ export async function POST(
         throw new Error('Task not found');
       }
 
-      if (task.status !== 'failed') {
+      if (task.status !== TaskStatus.FAILED) {
         throw new Error(`Cannot retry task in state: ${task.status}`);
       }
 
@@ -43,7 +42,7 @@ export async function POST(
       // 3. 更新 PostgreSQL 中的任务状态
       await tx.task.update({
         where: { id },
-        data: { status: 'waiting', progress: 0, error: null },
+        data: { status: TaskStatus.PENDING, progress: 0, error: null },
       });
     });
 
@@ -51,7 +50,7 @@ export async function POST(
 
     return NextResponse.json({
       id,
-      status: 'waiting',
+      status: 'waiting' as const,
       message: 'Task has been queued for retry',
     });
 

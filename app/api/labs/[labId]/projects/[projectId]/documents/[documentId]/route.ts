@@ -2,6 +2,18 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getDocumentStatus } from '@/lib/redis/client';
 import { deleteFile } from '@/lib/minio/client';
+import { DocStatus } from '@prisma/client';
+
+// 有效的文档状态
+const VALID_DOC_STATUSES: string[] = ['UPLOADING', 'PROCESSING', 'SUCCESS', 'FAILED'];
+
+// 验证并转换状态
+function validateDocStatus(status: string | null | undefined): DocStatus {
+  if (status && VALID_DOC_STATUSES.includes(status)) {
+    return status as DocStatus;
+  }
+  return DocStatus.UPLOADING;
+}
 
 export async function GET(
   request: Request,
@@ -26,10 +38,11 @@ export async function GET(
     }
 
     // 尝试从 Redis 获取最新状态
+    let finalStatus = document.status;
     try {
       const redisStatus = await getDocumentStatus(documentId);
       if (redisStatus) {
-        document.status = redisStatus;
+        finalStatus = validateDocStatus(redisStatus);
       }
     } catch (error) {
       // Redis 错误不影响主流程
@@ -38,7 +51,7 @@ export async function GET(
 
     return NextResponse.json({
       ...document,
-      status: document.status || 'PENDING'
+      status: finalStatus
     });
   } catch (error) {
     console.error('Failed to fetch document:', error);

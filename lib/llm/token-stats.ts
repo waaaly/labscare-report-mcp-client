@@ -48,8 +48,8 @@ export function accumulateTokenUsage(
     inputTokens: existing.inputTokens + (newUsage.inputTokens || newUsage.promptTokens || 0),
     outputTokens: existing.outputTokens + (newUsage.outputTokens || newUsage.completionTokens || 0),
     totalTokens: existing.totalTokens + (newUsage.totalTokens || 0),
-    promptTokens: existing.promptTokens + (newUsage.promptTokens || 0),
-    completionTokens: existing.completionTokens + (newUsage.completionTokens || 0),
+    promptTokens: (existing.promptTokens || 0) + (newUsage.promptTokens || 0),
+    completionTokens: (existing.completionTokens || 0) + (newUsage.completionTokens || 0),
   };
 }
 

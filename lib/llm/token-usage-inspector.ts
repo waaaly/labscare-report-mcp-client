@@ -34,12 +34,12 @@ export class TokenUsageInspector extends BaseCallbackHandler {
       
       if (llmOutput?.usage) {
         this.tokenUsage = {
-          promptTokens: llmOutput.usage.prompt_tokens || llmOutput.usage.input_tokens,
-          completionTokens: llmOutput.usage.completion_tokens || llmOutput.usage.output_tokens,
-          totalTokens: llmOutput.usage.total_tokens,
+          promptTokens: llmOutput.usage.prompt_tokens || llmOutput.usage.input_tokens || 0,
+          completionTokens: llmOutput.usage.completion_tokens || llmOutput.usage.output_tokens || 0,
+          totalTokens: llmOutput.usage.total_tokens || 0,
         };
         
-        logger.info('[TokenUsage] 获取到 token 使用量:', this.tokenUsage);
+        logger.info({ tokenUsage: this.tokenUsage }, '[TokenUsage] 获取到 token 使用量');
         
         // 如果有回调，立即通知
         if (this.onTokenUsageCallback) {
@@ -51,9 +51,9 @@ export class TokenUsageInspector extends BaseCallbackHandler {
       if (llmOutput?.additional_kwargs?.usage) {
         const usage = llmOutput.additional_kwargs.usage;
         this.tokenUsage = {
-          promptTokens: usage.prompt_tokens || usage.input_tokens || this.tokenUsage.promptTokens,
-          completionTokens: usage.completion_tokens || usage.output_tokens || this.tokenUsage.completionTokens,
-          totalTokens: usage.total_tokens || this.tokenUsage.totalTokens,
+          promptTokens: usage.prompt_tokens || usage.input_tokens || this.tokenUsage.promptTokens || 0,
+          completionTokens: usage.completion_tokens || usage.output_tokens || this.tokenUsage.completionTokens || 0,
+          totalTokens: usage.total_tokens || this.tokenUsage.totalTokens || 0,
         };
         
         if (this.onTokenUsageCallback) {
@@ -62,7 +62,7 @@ export class TokenUsageInspector extends BaseCallbackHandler {
       }
       
     } catch (error) {
-      logger.error('[TokenUsage] 解析 token 使用量失败:', error);
+      logger.error({ error }, '[TokenUsage] 解析 token 使用量失败');
     }
   }
 
