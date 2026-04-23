@@ -50,6 +50,19 @@ export default function LLMConversationPage() {
     { id: 'main', name: '主分支', createdAt: Date.now() }
   ]);
 
+  // Token 统计状态
+  const [currentTokenUsage, setCurrentTokenUsage] = useState<{
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  } | null>(null);
+  const [conversationTokenUsage, setConversationTokenUsage] = useState<{
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }>({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+  const [requestCount, setRequestCount] = useState(0);
+
   // 停止生成：AbortController ref
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -392,6 +405,19 @@ export default function LLMConversationPage() {
                   addLog(`Status: ${json.text}`);
                   // 使用独立状态立即显示 status，不添加到消息历史
                   setCurrentStatus(json.text);
+                } else if (json.type === 'metrics' && json.token_usage) {
+                  // 处理 token 使用量统计
+                  const usage = json.token_usage;
+                  console.log('[Client] 处理 token 使用量:', usage);
+                  setCurrentTokenUsage(usage);
+                  // 累加到对话统计
+                  setConversationTokenUsage(prev => ({
+                    inputTokens: prev.inputTokens + (usage.inputTokens || 0),
+                    outputTokens: prev.outputTokens + (usage.outputTokens || 0),
+                    totalTokens: prev.totalTokens + (usage.totalTokens || 0),
+                  }));
+                  setRequestCount(prev => prev + 1);
+                  addLog(`Token: ${usage.totalTokens} (输入:${usage.inputTokens} 输出:${usage.outputTokens})`);
                 } else {
                   console.log(`[Client] 收到未处理的JSON类型:`, json.type, '完整数据:', JSON.stringify(json));
                 }
@@ -674,6 +700,9 @@ export default function LLMConversationPage() {
           onInsertPrompt={handleInsertPrompt}
           currentModel={currentModel}
           onModelChange={handleModelChange}
+          tokenUsage={currentTokenUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }}
+          conversationUsage={conversationTokenUsage}
+          requestCount={requestCount}
           availableModels={availableModels.map(model => ({
             id: `${model.model}`,
             name: model.name,

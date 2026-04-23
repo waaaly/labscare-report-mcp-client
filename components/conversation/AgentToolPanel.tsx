@@ -31,9 +31,11 @@ import {
   Settings,
   Activity,
   Wrench,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ApiToolsPanel from './ApiToolsPanel';
+import TokenStats from './TokenStats';
 
 type Props = {
   logs?: string[];
@@ -41,10 +43,16 @@ type Props = {
   currentModel?: string;
   onModelChange?: (model: string) => void;
   tokenUsage?: {
-    prompt: number;
-    completion: number;
-    total: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
   };
+  conversationUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+  requestCount?: number;
   onInsertPrompt?: (prompt: string) => void;
   availableModels?: Array<{
     id: string;
@@ -79,6 +87,8 @@ export default function AgentToolPanel({
   currentModel,
   onModelChange,
   tokenUsage,
+  conversationUsage,
+  requestCount = 0,
   onInsertPrompt,
   availableModels,
   availableTools,
@@ -115,14 +125,18 @@ export default function AgentToolPanel({
       <CardContent className="flex-1 overflow-hidden p-0">
         {isExpanded && (
           <Tabs defaultValue="model" className="h-full flex flex-col">
-            <TabsList className="w-full grid grid-cols-3 rounded-none border-b bg-muted/30 h-10">
-            <TabsTrigger value="model" className="text-xs gap-1">
+            <TabsList className="w-full grid grid-cols-4 rounded-none border-b bg-muted/30 h-10">
+              <TabsTrigger value="model" className="text-xs gap-1">
                 <Sparkles className="h-3 w-3" />
                 模型
               </TabsTrigger>
               <TabsTrigger value="api-tools" className="text-xs gap-1">
                 <Wrench className="h-3 w-3" />
                 API工具
+              </TabsTrigger>
+              <TabsTrigger value="token" className="text-xs gap-1">
+                <BarChart3 className="h-3 w-3" />
+                Token
               </TabsTrigger>
               <TabsTrigger value="tools" className="text-xs gap-1">
                 <Cpu className="h-3 w-3" />
@@ -178,32 +192,18 @@ export default function AgentToolPanel({
                   <Hash className="h-4 w-4" />
                   <span>Token 消耗</span>
                   <Badge variant="outline" className="text-xs ml-auto">
-                    本会话
+                    {requestCount} 次请求
                   </Badge>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Card className="p-2 text-center bg-violet-50/50 dark:bg-violet-950/30">
-                    <div className="text-lg font-bold text-violet-600">
-                      {tokenUsage?.prompt || 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground">输入</div>
-                  </Card>
-                  <Card className="p-2 text-center bg-cyan-50/50 dark:bg-cyan-950/30">
-                    <div className="text-lg font-bold text-cyan-600">
-                      {tokenUsage?.completion || 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground">输出</div>
-                  </Card>
-                  <Card className="p-2 text-center bg-gradient-to-br from-violet-500/10 to-cyan-500/10">
-                    <div className="text-lg font-bold">
-                      {tokenUsage?.total || 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground">总计</div>
-                  </Card>
-                </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  精确计费请查看服务商后台
-                </p>
+                <TokenStats
+                  currentUsage={tokenUsage}
+                  conversationUsage={conversationUsage || {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    totalTokens: 0,
+                  }}
+                  requestCount={requestCount}
+                />
               </section>
 
               {/* 活动日志 */}
@@ -238,6 +238,70 @@ export default function AgentToolPanel({
             {/* API 工具标签页 */}
             <TabsContent value="api-tools" className="flex-1 overflow-auto p-4 mt-0">
               <ApiToolsPanel onInsertPrompt={onInsertPrompt} />
+            </TabsContent>
+
+            {/* Token 统计标签页 */}
+            <TabsContent value="token" className="flex-1 overflow-auto p-4 mt-0">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <BarChart3 className="h-4 w-4" />
+                  <span>Token 消耗统计</span>
+                </div>
+                <TokenStats
+                  currentUsage={tokenUsage}
+                  conversationUsage={conversationUsage || {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    totalTokens: 0,
+                  }}
+                  requestCount={requestCount}
+                />
+                
+                {/* 统计图表 */}
+                {conversationUsage && conversationUsage.totalTokens > 0 && (
+                  <div className="mt-4 p-4 rounded-lg bg-gradient-to-br from-violet-500/5 to-cyan-500/5 border border-violet-100 dark:border-violet-800">
+                    <div className="text-xs text-muted-foreground mb-3">消耗占比</div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-400 w-12">输入</span>
+                        <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full"
+                            style={{ 
+                              width: `${conversationUsage.totalTokens > 0 
+                                ? (conversationUsage.inputTokens / conversationUsage.totalTokens * 100) 
+                                : 0}%` 
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-mono w-16 text-right">
+                          {Math.round(conversationUsage.totalTokens > 0 
+                            ? (conversationUsage.inputTokens / conversationUsage.totalTokens * 100) 
+                            : 0)}%
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-green-400 w-12">输出</span>
+                        <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full"
+                            style={{ 
+                              width: `${conversationUsage.totalTokens > 0 
+                                ? (conversationUsage.outputTokens / conversationUsage.totalTokens * 100) 
+                                : 0}%` 
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-mono w-16 text-right">
+                          {Math.round(conversationUsage.totalTokens > 0 
+                            ? (conversationUsage.outputTokens / conversationUsage.totalTokens * 100) 
+                            : 0)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             {/* 工具标签页 */}

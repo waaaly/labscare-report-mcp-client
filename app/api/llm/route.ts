@@ -5,6 +5,7 @@ import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { logger} from '@/lib/logger'
 import { writeToFile } from '@/lib/logger-to-file'
 import { availableModels } from '@/lib/llm/model-config';
+import { TokenUsageInspector, TokenUsageResult } from '@/lib/llm/token-usage-inspector';
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // T0: 请求开始
@@ -113,8 +114,14 @@ export async function POST(request: NextRequest) {
     logger.info('5. 文件处理优化:'+ processedFiles.length + ' 个文件，避免重复读取');
     logger.info('6. 消息处理优化:'+ (messagesJson ? '只处理最后10条消息' : '无消息历史'));
 
+    // 创建 Token 使用量回调处理器
+    const tokenInspector = new TokenUsageInspector();
+    
     const agent = await getAgent(availableModels.find(m => m.model === model) || availableModels[0]);
-    const eventStream = await agent.stream({ messages: inputMessages }, { streamMode: [ 'updates', 'messages',] });
+    const eventStream = await agent.stream({ messages: inputMessages }, { 
+      streamMode: [ 'updates', 'messages',],
+      callbacks: [tokenInspector]
+    });
     const streamStart = Date.now();
     logger.info('Graph 开始执行:'+ (streamStart - startTime) + ' ms');
 
@@ -194,11 +201,20 @@ export async function POST(request: NextRequest) {
           const totalDuration = endTime - startTime;
           logger.info(`总生成耗时: ${totalDuration}ms`);
 
-          // 发送结束指标
+          // 获取 token 使用量
+          const tokenUsage = tokenInspector.getTokenUsage();
+          logger.info('[TokenUsage] 最终使用量:', tokenUsage);
+
+          // 发送结束指标（包含 token 使用量）
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: "metrics",
             total_duration: totalDuration,
-            pure_generate_duration: endTime - (firstTokenTime || endTime)
+            pure_generate_duration: endTime - (firstTokenTime || endTime),
+            token_usage: {
+              inputTokens: tokenUsage.promptTokens || 0,
+              outputTokens: tokenUsage.completionTokens || 0,
+              totalTokens: tokenUsage.totalTokens || 0,
+            }
           })}\n\n`));
 
           controller.close();

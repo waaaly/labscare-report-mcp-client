@@ -11,7 +11,8 @@ import { logger } from "@/lib/logger";
 // ============================================
 // 1. 实验室管理工具
 // ============================================
-
+// 从环境变量或全局配置中获取 API 基础地址
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 /**
  * 获取实验室列表
  * 用于查看当前系统中所有实验室
@@ -23,7 +24,7 @@ export const listLabsTool = new DynamicTool({
 当你需要查看系统中有哪些实验室，或需要获取特定实验室的 ID 时使用。`,
   func: async (input: string) => {
     try {
-      const response = await fetch("/api/labs");
+      const response = await fetch(baseUrl + "/api/labs");
       const labs = await response.json();
       return JSON.stringify(labs, null, 2);
     } catch (error) {
@@ -47,7 +48,7 @@ export const createLabTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const params = JSON.parse(input);
-      const response = await fetch("/api/labs", {
+      const response = await fetch(baseUrl + "/api/labs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -78,7 +79,7 @@ export const listProjectsTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const { labId } = JSON.parse(input);
-      const response = await fetch(`/api/labs/${labId}/projects`);
+      const response = await fetch(baseUrl + `/api/labs/${labId}/projects`);
       const projects = await response.json();
       return JSON.stringify(projects, null, 2);
     } catch (error) {
@@ -101,7 +102,7 @@ export const createProjectTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const params = JSON.parse(input);
-      const response = await fetch(`/api/labs/${params.labId}/projects`, {
+      const response = await fetch(baseUrl + `/api/labs/${params.labId}/projects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -128,7 +129,7 @@ export const getProjectTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const { labId, projectId } = JSON.parse(input);
-      const response = await fetch(`/api/labs/${labId}/projects/${projectId}`);
+      const response = await fetch(baseUrl + `/api/labs/${labId}/projects/${projectId}`);
       const project = await response.json();
       return JSON.stringify(project, null, 2);
     } catch (error) {
@@ -155,7 +156,7 @@ export const listReportTemplatesTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const { labId } = JSON.parse(input);
-      const response = await fetch(`/api/labs/${labId}/reports`);
+      const response = await fetch(baseUrl + `/api/labs/${labId}/reports`);
       const templates = await response.json();
       return JSON.stringify(templates, null, 2);
     } catch (error) {
@@ -178,7 +179,7 @@ export const createReportTemplateTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const params = JSON.parse(input);
-      const response = await fetch(`/api/labs/${params.labId}/reports`, {
+      const response = await fetch(baseUrl + `/api/labs/${params.labId}/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -209,7 +210,7 @@ export const listScriptsTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const { labId, projectId } = JSON.parse(input);
-      const response = await fetch(`/api/labs/${labId}/projects/${projectId}/scripts`);
+      const response = await fetch(baseUrl + `/api/labs/${labId}/projects/${projectId}/scripts`);
       const scripts = await response.json();
       return JSON.stringify(scripts, null, 2);
     } catch (error) {
@@ -232,7 +233,7 @@ export const saveScriptTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const params = JSON.parse(input);
-      const response = await fetch(`/api/labs/${params.labId}/projects/${params.projectId}/scripts`, {
+      const response = await fetch(baseUrl + `/api/labs/${params.labId}/projects/${params.projectId}/scripts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -264,7 +265,7 @@ export const uploadDocumentTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const params = JSON.parse(input);
-      const response = await fetch(`/api/labs/${params.labId}/projects/${params.projectId}/documents`, {
+      const response = await fetch(baseUrl + `/api/labs/${params.labId}/projects/${params.projectId}/documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -295,7 +296,7 @@ export const getKnowledgeBaseTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const { labId } = JSON.parse(input);
-      const response = await fetch(`/api/labs/${labId}/knowledge`);
+      const response = await fetch(baseUrl + `/api/labs/${labId}/knowledge`);
       const knowledge = await response.json();
       return JSON.stringify(knowledge, null, 2);
     } catch (error) {
@@ -320,7 +321,7 @@ export const updateKnowledgeBaseTool = new DynamicTool({
     try {
       const params = JSON.parse(input);
       const { labId, ...updates } = params;
-      const response = await fetch(`/api/labs/${labId}/knowledge`, {
+      const response = await fetch(baseUrl + `/api/labs/${labId}/knowledge`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ knowledgeBase: updates }),
@@ -351,7 +352,7 @@ export const getTaskStatusTool = new DynamicTool({
   func: async (input: string) => {
     try {
       const { taskId } = JSON.parse(input);
-      const response = await fetch(`/api/tasks/${taskId}`);
+      const response = await fetch(baseUrl + `/api/tasks/${taskId}`);
       const task = await response.json();
       return JSON.stringify(task, null, 2);
     } catch (error) {
