@@ -29,7 +29,8 @@ npm run lint
 
 ### 当前最高优先级未完成功能
 根据 feature_list.json，P0、P1、P2 已全部完成。
-下一个功能：P3（模型切换、消息分支、Token 统计、Skill 切换）
+已完成功能：模型切换（P3）
+下一个功能：消息分支、Token 统计、Skill 切换（P3）
 
 ### 当前 Blocker
 无
@@ -108,9 +109,21 @@ npm run lint
 | **已完成** | 1. 图片放大预览：<br>   - 创建 ImageLightbox.tsx 组件<br>   - 支持缩放、拖拽、旋转重置<br>   - VirtualizedMessages 图片添加点击打开 Lightbox<br>2. 对话搜索：<br>   - ChatArea 添加搜索按钮和搜索框<br>   - VirtualizedMessages 添加 highlightText 函数<br>   - 匹配消息黄色边框高亮<br>3. 对话导出：<br>   - ChatArea 添加导出下拉菜单<br>   - page.tsx 添加 handleExport 函数<br>   - 支持 Markdown 和 JSON 格式导出 |
 | **运行过的验证** | `npx tsc --noEmit` - 通过<br>`npm run lint` - 仅有项目已有警告 |
 | **已记录证据** | - components/conversation/ImageLightbox.tsx: 新建<br>- components/conversation/VirtualizedMessages.tsx: +搜索高亮逻辑<br>- components/conversation/ChatArea.tsx: +搜索框、导出菜单<br>- app/conversation/page.tsx: +搜索状态、handleExport |
-| **提交记录** | 待提交 |
+| **提交记录** | c1063e1 |
 | **已知风险或未解决问题** | 无 |
-| **下一步最佳动作** | 提交本次变更，然后实现 P3 功能（模型切换、消息分支、Token 统计） |
+| **下一步最佳动作** | 实现 P3 功能（模型切换、消息分支、Token 统计） |
+
+### 2026-04-22 16:00 - 第 6 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 重构 AI 对话界面 UI，实现模型切换功能 |
+| **已完成** | 1. 重构 AI 对话界面 UI：<br>   - 优化布局和样式<br>   - 改进组件结构<br>   - 提升用户体验<br>2. 实现模型切换功能：<br>   - 添加模型选择器组件<br>   - 支持 GPT-4、Claude 等模型切换<br>   - 集成 Token 统计显示<br>3. 修复已知问题：<br>   - 修复 ImageLightbox 渲染问题<br>   - 修复 TokenStats 组件导入错误<br>   - 修复 TypeScript 类型错误 |
+| **运行过的验证** | `npm run typecheck` - 通过<br>`npm run lint` - 通过 |
+| **已记录证据** | - 提交记录: 4fe76bf (UI 重构), 5d81bc9 (模型切换), 10b2f93 (TokenStats 修复), e1be19c (TypeScript 修复)<br>- 新增组件: 模型切换器、Token 统计器<br>- 改进的对话界面布局和样式 |
+| **提交记录** | 4fe76bf, 5d81bc9, 10b2f93, e1be19c |
+| **已知风险或未解决问题** | 无 |
+| **下一步最佳动作** | 实现消息分支功能和 Skill 切换功能 |
 
 ---
 
