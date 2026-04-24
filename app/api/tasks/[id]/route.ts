@@ -71,7 +71,7 @@ export async function GET(
     // 转换为响应格式
     const response: TaskDetailResponse = {
       id: dbTask.id,
-      name: dbTask.name,
+      name: dbTask.report?.name || '',
       status: taskStatusToApiStatus(dbTask.status),
       progress: dbTask.progress,
       materials: dbTask.report?.documents.map(document => ({
@@ -79,16 +79,12 @@ export async function GET(
         name: document.name,
         type: document.type,
         size: document.size,
-        description: document.description,
         url: document.url,
         storagePath: document.storagePath,
-        content: document.content,
       })) || [],
       createdAt: dbTask.createdAt.getTime(),
       completedAt: dbTask.completedAt?.getTime(),
       duration: dbTask.duration ? Number(dbTask.duration) : undefined,
-      result: dbTask.result,
-      error: dbTask.error || undefined,
     };
 
     return NextResponse.json(response);

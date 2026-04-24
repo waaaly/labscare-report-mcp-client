@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 8081",
     "lint": "next lint",
-    "typecheck": "npx tsc --noEmit --pretty false --incremental false",
+    "typecheck": "node scripts/check-type.js",
     "db:init": "npx prisma migrate dev --name init",
     "db:gen": "npx prisma generate",
     "db:push": "prisma db push",

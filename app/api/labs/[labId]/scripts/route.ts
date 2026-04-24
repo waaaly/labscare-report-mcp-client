@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: NextRequest, { params }: { params: { labId: string } }) {
-  const { labId } = params;
+export async function GET(request: NextRequest, { params }: { params: Promise<{ labId: string }> }) {
+  const { labId } = await params;
   const searchParams = request.nextUrl.searchParams;
   const projectId = searchParams.get('projectId');
   const reportId = searchParams.get('reportId');

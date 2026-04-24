@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
 
           // 获取 token 使用量
           const tokenUsage = tokenInspector.getTokenUsage();
-          logger.info('[TokenUsage] 最终使用量:', tokenUsage);
+          logger.info('[TokenUsage] 最终使用量: ' + JSON.stringify(tokenUsage));
 
           // 发送结束指标（包含 token 使用量）
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({

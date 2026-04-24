@@ -42,7 +42,7 @@ export async function POST(
       // 3. 更新 PostgreSQL 中的任务状态
       await tx.task.update({
         where: { id },
-        data: { status: TaskStatus.PENDING, progress: 0, error: null },
+        data: { status: TaskStatus.PENDING, progress: 0 },
       });
     });
 

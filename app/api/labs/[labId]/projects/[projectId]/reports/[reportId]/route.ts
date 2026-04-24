@@ -59,7 +59,6 @@ export async function GET(
             id: true,
             name: true,
             url: true,
-            content: true,
             size: true,
             type: true,
             status: true,
@@ -69,7 +68,6 @@ export async function GET(
         tasks: {
           select: {
             id: true,
-            name: true,
             status: true,
             createdAt: true,
           },
