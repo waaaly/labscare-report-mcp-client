@@ -23,7 +23,7 @@ type Props = {
   onSend: (input: string) => void;
   onStop?: () => void;
   onRegenerate?: () => void;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   onFilesChange: (files: File[]) => void;
   currentStatus?: string | null;
   // 搜索相关

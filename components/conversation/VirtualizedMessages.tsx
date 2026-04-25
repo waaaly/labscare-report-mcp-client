@@ -434,7 +434,7 @@ export function VirtualizedMessages({
 }: {
   messages: Msg[];
   isLoading: boolean;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   currentStatus?: string | null;
   searchQuery?: string;
   highlightedMessageIndex?: number | null;
