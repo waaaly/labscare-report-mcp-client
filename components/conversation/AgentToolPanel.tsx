@@ -34,8 +34,8 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatTokenCount } from '@/lib/llm/token-stats';
 import ApiToolsPanel from './ApiToolsPanel';
-import TokenStats from './TokenStats';
 
 type Props = {
   logs?: string[];
@@ -66,6 +66,12 @@ type Props = {
     enabled?: boolean;
     icon: typeof FileCode | typeof Search | typeof Database | typeof Zap;
   }>;
+  usageHistory?: Array<{
+    content: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }>;
 };
 
 const defaultModels = [
@@ -92,6 +98,7 @@ export default function AgentToolPanel({
   onInsertPrompt,
   availableModels,
   availableTools,
+  usageHistory = [],
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(true);
   const models = availableModels || defaultModels;
@@ -186,24 +193,43 @@ export default function AgentToolPanel({
                 </div>
               </section>
 
-              {/* Token 消耗统计 */}
+              {/* Token 消耗统计 - 仅展示当前请求 */}
               <section className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Hash className="h-4 w-4" />
                   <span>Token 消耗</span>
                   <Badge variant="outline" className="text-xs ml-auto">
-                    {requestCount} 次请求
+                    当前请求
                   </Badge>
                 </div>
-                <TokenStats
-                  currentUsage={tokenUsage}
-                  conversationUsage={conversationUsage || {
-                    inputTokens: 0,
-                    outputTokens: 0,
-                    totalTokens: 0,
-                  }}
-                  requestCount={requestCount}
-                />
+                {tokenUsage && tokenUsage.totalTokens > 0 ? (
+                  <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg p-3 border border-purple-500/20">
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-400">输入</span>
+                        <span className="font-mono font-medium">
+                          {formatTokenCount(tokenUsage.inputTokens)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-400">输出</span>
+                        <span className="font-mono font-medium">
+                          {formatTokenCount(tokenUsage.outputTokens)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm border-t border-purple-500/20 pt-2 mt-2">
+                        <span className="text-purple-400">总计</span>
+                        <span className="font-mono font-bold text-purple-400">
+                          {formatTokenCount(tokenUsage.totalTokens)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground text-center py-4 border rounded-lg bg-muted/30">
+                    发送消息后即可查看 Token 消耗
+                  </div>
+                )}
               </section>
 
               {/* 活动日志 */}
@@ -246,59 +272,66 @@ export default function AgentToolPanel({
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <BarChart3 className="h-4 w-4" />
                   <span>Token 消耗统计</span>
+                  <Badge variant="outline" className="text-xs ml-auto">
+                    {usageHistory.length} 次提问
+                  </Badge>
                 </div>
-                <TokenStats
-                  currentUsage={tokenUsage}
-                  conversationUsage={conversationUsage || {
-                    inputTokens: 0,
-                    outputTokens: 0,
-                    totalTokens: 0,
-                  }}
-                  requestCount={requestCount}
-                />
-                
-                {/* 统计图表 */}
-                {conversationUsage && conversationUsage.totalTokens > 0 && (
-                  <div className="mt-4 p-4 rounded-lg bg-gradient-to-br from-violet-500/5 to-cyan-500/5 border border-violet-100 dark:border-violet-800">
-                    <div className="text-xs text-muted-foreground mb-3">消耗占比</div>
+
+                {usageHistory.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* 列表：每次提问的 token 消耗 */}
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-400 w-12">输入</span>
-                        <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full"
-                            style={{ 
-                              width: `${conversationUsage.totalTokens > 0 
-                                ? (conversationUsage.inputTokens / conversationUsage.totalTokens * 100) 
-                                : 0}%` 
-                            }}
-                          />
+                      {usageHistory.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border bg-muted/30 p-3 space-y-2"
+                        >
+                          <div className="text-xs text-muted-foreground truncate" title={item.content}>
+                            {item.content || '[无内容]'}
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-blue-400">
+                              输入 {formatTokenCount(item.inputTokens)}
+                            </span>
+                            <span className="text-green-400">
+                              输出 {formatTokenCount(item.outputTokens)}
+                            </span>
+                            <span className="text-purple-400 font-mono font-medium">
+                              总计 {formatTokenCount(item.totalTokens)}
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-xs font-mono w-16 text-right">
-                          {Math.round(conversationUsage.totalTokens > 0 
-                            ? (conversationUsage.inputTokens / conversationUsage.totalTokens * 100) 
-                            : 0)}%
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-green-400 w-12">输出</span>
-                        <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full"
-                            style={{ 
-                              width: `${conversationUsage.totalTokens > 0 
-                                ? (conversationUsage.outputTokens / conversationUsage.totalTokens * 100) 
-                                : 0}%` 
-                            }}
-                          />
+                      ))}
+                    </div>
+
+                    {/* 会话汇总 */}
+                    <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+                      <div className="text-xs text-muted-foreground mb-2">会话汇总</div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-blue-400">输入</span>
+                          <span className="font-mono font-medium">
+                            {formatTokenCount(conversationUsage?.inputTokens || 0)}
+                          </span>
                         </div>
-                        <span className="text-xs font-mono w-16 text-right">
-                          {Math.round(conversationUsage.totalTokens > 0 
-                            ? (conversationUsage.outputTokens / conversationUsage.totalTokens * 100) 
-                            : 0)}%
-                        </span>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-green-400">输出</span>
+                          <span className="font-mono font-medium">
+                            {formatTokenCount(conversationUsage?.outputTokens || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm border-t border-slate-600 pt-2 mt-2">
+                          <span className="text-purple-400">总计</span>
+                          <span className="font-mono font-bold text-purple-400">
+                            {formatTokenCount(conversationUsage?.totalTokens || 0)}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground text-center py-8 border rounded-lg bg-muted/30">
+                    暂无 Token 消耗记录
                   </div>
                 )}
               </div>

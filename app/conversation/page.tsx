@@ -42,7 +42,7 @@ export default function LLMConversationPage() {
   const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
 
   // 模型切换状态
-  const [currentModel, setCurrentModel] = useState<string>('gpt-5.3-codex');
+  const [currentModel, setCurrentModel] = useState<string>(availableModels[0].model);
 
   // 分支管理状态
   const [currentBranchId, setCurrentBranchId] = useState<string>('main');
@@ -62,6 +62,12 @@ export default function LLMConversationPage() {
     totalTokens: number;
   }>({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
   const [requestCount, setRequestCount] = useState(0);
+  const [usageHistory, setUsageHistory] = useState<Array<{
+    content: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }>>([]);
 
   // 停止生成：AbortController ref
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -154,6 +160,7 @@ export default function LLMConversationPage() {
     setMessages([]);
     setInput('');
     setIsShowWelcome(true);
+    setUsageHistory([]);
     try {
       localStorage.setItem(msgKey(id), JSON.stringify([]));
     } catch { }
@@ -179,6 +186,7 @@ export default function LLMConversationPage() {
     }
     setCurrentId(id);
     setInput('');
+    setUsageHistory([]);
   }, [currentId, msgKey]);
 
   // 快捷操作处理
@@ -417,6 +425,16 @@ export default function LLMConversationPage() {
                     totalTokens: prev.totalTokens + (usage.totalTokens || 0),
                   }));
                   setRequestCount(prev => prev + 1);
+                  // 记录到历史列表
+                  setUsageHistory(prev => [
+                    ...prev,
+                    {
+                      content: lastUserMessageRef.current?.text || '',
+                      inputTokens: usage.inputTokens || 0,
+                      outputTokens: usage.outputTokens || 0,
+                      totalTokens: usage.totalTokens || 0,
+                    },
+                  ]);
                   addLog(`Token: ${usage.totalTokens} (输入:${usage.inputTokens} 输出:${usage.outputTokens})`);
                 } else {
                   console.log(`[Client] 收到未处理的JSON类型:`, json.type, '完整数据:', JSON.stringify(json));
@@ -703,6 +721,7 @@ export default function LLMConversationPage() {
           tokenUsage={currentTokenUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }}
           conversationUsage={conversationTokenUsage}
           requestCount={requestCount}
+          usageHistory={usageHistory}
           availableModels={availableModels.map(model => ({
             id: `${model.model}`,
             name: model.name,
