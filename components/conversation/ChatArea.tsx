@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download } from 'lucide-react';
+import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download, Folder } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { VirtualizedMessages, Msg } from './VirtualizedMessages';
 
@@ -39,6 +39,9 @@ type Props = {
   onSwitchBranch?: (branchId: string) => void;
   branches?: { id: string; name: string; createdAt: number }[];
   onCreateBranch?: (messageIndex: number) => void;
+
+  // 背景图相关
+  showUploadBackground?: boolean;
 };
 
 export default function ChatArea({
@@ -61,9 +64,11 @@ export default function ChatArea({
   onSwitchBranch,
   branches = [],
   onCreateBranch,
+  showUploadBackground = false,
 }: Props) {
   const [attachments, setAttachments] = React.useState<{ file: File; type: 'image' | 'json' | 'md'; preview?: string; previewText?: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const folderInputRef = React.useRef<HTMLInputElement | null>(null);
   const [localInput, setLocalInput] = React.useState(input);
   const [showSearch, setShowSearch] = React.useState(false);
 
@@ -127,12 +132,261 @@ export default function ChatArea({
     e.currentTarget.value = '';
   }, [addFiles]);
 
-  const handleDrop = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addFiles(e.dataTransfer.files);
+  const traverseFileTree = React.useCallback(async (entry: any, path = "") => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve) => entry.file(resolve));
+      Object.defineProperty(file, 'webkitRelativePath', {
+        value: path + file.name,
+        writable: false
+      });
+      return file;
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader();
+      const entries = await new Promise<any[]>((resolve) => dirReader.readEntries(resolve));
+      const files: File[] = [];
+      for (const childEntry of entries) {
+        const childFile = await traverseFileTree(childEntry, path + entry.name + "/");
+        if (childFile) {
+          if (Array.isArray(childFile)) {
+            files.push(...childFile);
+          } else {
+            files.push(childFile);
+          }
+        }
+      }
+      return files;
     }
-  }, [addFiles]);
+    return null;
+  }, []);
+
+  interface DirectoryStructure {
+    topLevelDir: string;
+    testCases: {
+      name: string;
+      hasRawReportDir: boolean;
+      hasMaterialDir: boolean;
+      rawReportFiles: string[];
+      materialFiles: string[];
+      missingJson: boolean;
+      missingMd: boolean;
+      missingImages: boolean;
+    }[];
+    isValid: boolean;
+    errors: string[];
+  }
+
+  const validateDirectoryStructure = React.useCallback((files: File[]): DirectoryStructure => {
+    const result: DirectoryStructure = {
+      topLevelDir: '',
+      testCases: [],
+      isValid: true,
+      errors: []
+    };
+
+    if (files.length === 0) {
+      result.isValid = false;
+      result.errors.push('未选择任何文件');
+      return result;
+    }
+
+    const pathMap = new Map<string, { type: 'dir' | 'file'; children?: string[]; files?: string[] }>();
+    
+    files.forEach(file => {
+      const relativePath = (file as any).webkitRelativePath || file.name;
+      const parts = relativePath.split('/');
+      
+      let currentPath = '';
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        currentPath = i === 0 ? part : `${currentPath}/${part}`;
+        
+        if (!pathMap.has(currentPath)) {
+          if (i === parts.length - 1) {
+            pathMap.set(currentPath, { type: 'file', files: [] });
+          } else {
+            pathMap.set(currentPath, { type: 'dir', children: [] });
+          }
+        }
+        
+        if (i > 0) {
+          const parentPath = i === 1 ? parts[0] : currentPath.substring(0, currentPath.lastIndexOf('/'));
+          const parent = pathMap.get(parentPath);
+          if (parent && parent.children && !parent.children.includes(part)) {
+            parent.children.push(part);
+          }
+        }
+      }
+    });
+
+    const topLevelEntries = Array.from(pathMap.keys()).filter(p => !p.includes('/'));
+    if (topLevelEntries.length !== 1) {
+      result.isValid = false;
+      result.errors.push(`期望只有一个顶层目录，但发现 ${topLevelEntries.length} 个`);
+      return result;
+    }
+    
+    result.topLevelDir = topLevelEntries[0];
+    const topLevel = pathMap.get(result.topLevelDir);
+    
+    if (!topLevel || topLevel.type !== 'dir') {
+      result.isValid = false;
+      result.errors.push('顶层目录不是有效的目录');
+      return result;
+    }
+
+    if (!topLevel.children || topLevel.children.length === 0) {
+      result.isValid = false;
+      result.errors.push('顶层目录为空，需要至少包含一个测试用例文件夹');
+      return result;
+    }
+
+    topLevel.children.forEach(testCaseName => {
+      const testCasePath = `${result.topLevelDir}/${testCaseName}`;
+      const testCase = pathMap.get(testCasePath);
+      
+      if (!testCase || testCase.type !== 'dir') {
+        result.testCases.push({
+          name: testCaseName,
+          hasRawReportDir: false,
+          hasMaterialDir: false,
+          rawReportFiles: [],
+          materialFiles: [],
+          missingJson: true,
+          missingMd: true,
+          missingImages: true
+        });
+        result.isValid = false;
+        result.errors.push(`测试用例 "${testCaseName}" 不是有效的目录`);
+        return;
+      }
+
+      const hasRawReportDir = testCase.children?.includes('原始报告文件夹') || false;
+      const hasMaterialDir = testCase.children?.includes('报告物料文件') || false;
+      
+      const rawReportFiles: string[] = [];
+      const materialFiles: string[] = [];
+      let missingJson = true;
+      let missingMd = true;
+      let missingImages = true;
+
+      if (hasRawReportDir) {
+        const rawReportPath = `${testCasePath}/原始报告文件夹`;
+        const rawReport = pathMap.get(rawReportPath);
+        if (rawReport && rawReport.children) {
+          rawReport.children.forEach(child => {
+            const filePath = `${rawReportPath}/${child}`;
+            const fileEntry = pathMap.get(filePath);
+            if (fileEntry?.type === 'file') {
+              rawReportFiles.push(child);
+              if (child.toLowerCase().endsWith('.json')) {
+                missingJson = false;
+              }
+            }
+          });
+        }
+      }
+
+      if (hasMaterialDir) {
+        const materialPath = `${testCasePath}/报告物料文件`;
+        const material = pathMap.get(materialPath);
+        if (material && material.children) {
+          material.children.forEach(child => {
+            const filePath = `${materialPath}/${child}`;
+            const fileEntry = pathMap.get(filePath);
+            if (fileEntry?.type === 'file') {
+              materialFiles.push(child);
+              if (child.toLowerCase().endsWith('.md')) {
+                missingMd = false;
+              }
+              if (child.match(/\.(jpg|jpeg|png|gif|bmp)$/i)) {
+                missingImages = false;
+              }
+            }
+          });
+        }
+      }
+
+      result.testCases.push({
+        name: testCaseName,
+        hasRawReportDir,
+        hasMaterialDir,
+        rawReportFiles,
+        materialFiles,
+        missingJson,
+        missingMd,
+        missingImages
+      });
+
+      if (!hasRawReportDir) {
+        result.isValid = false;
+        result.errors.push(`测试用例 "${testCaseName}" 缺少 "原始报告文件夹"`);
+      }
+      if (!hasMaterialDir) {
+        result.isValid = false;
+        result.errors.push(`测试用例 "${testCaseName}" 缺少 "报告物料文件" 文件夹`);
+      }
+      if (hasRawReportDir && missingJson) {
+        result.isValid = false;
+        result.errors.push(`测试用例 "${testCaseName}" 的 "原始报告文件夹" 缺少 JSON 数据文件（样品数据.json 或 流程数据.json）`);
+      }
+      if (hasMaterialDir && missingMd) {
+        result.isValid = false;
+        result.errors.push(`测试用例 "${testCaseName}" 的 "报告物料文件" 缺少 Markdown 描述文件（.md）`);
+      }
+      if (hasMaterialDir && missingImages) {
+        result.isValid = false;
+        result.errors.push(`测试用例 "${testCaseName}" 的 "报告物料文件" 缺少占位模板图片（.jpg, .png 等）`);
+      }
+    });
+
+    return result;
+  }, []);
+
+  const handleFolderChange = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    
+    const files: File[] = [];
+    for (let i = 0; i < e.target.files.length; i++) {
+      const file = e.target.files[i];
+      files.push(file);
+    }
+    
+    const validation = validateDirectoryStructure(files);
+    
+    if (!validation.isValid) {
+      const errorMessage = validation.errors.join('\n');
+      alert(`目录结构验证失败：\n\n${errorMessage}`);
+      e.currentTarget.value = '';
+      return;
+    }
+    
+    if (files.length > 0) addFiles(files);
+    e.currentTarget.value = '';
+  }, [addFiles, validateDirectoryStructure]);
+
+  const handleDrop = React.useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const items = e.dataTransfer?.items;
+    if (!items) return;
+
+    const allFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const entry = item.webkitGetAsEntry?.();
+      if (entry) {
+        const result = await traverseFileTree(entry);
+        if (result) {
+          if (Array.isArray(result)) {
+            allFiles.push(...result);
+          } else {
+            allFiles.push(result);
+          }
+        }
+      }
+    }
+    
+    if (allFiles.length > 0) addFiles(allFiles);
+  }, [addFiles, traverseFileTree]);
 
   const handleDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -321,7 +575,17 @@ export default function ChatArea({
           </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="flex-1 overflow-auto">
+      <CardContent
+        className="flex-1 overflow-auto relative"
+        style={showUploadBackground ? {
+          backgroundImage: `url('/image/upload-path-bg.png')`,
+          backgroundSize: '800px auto',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center center',
+          backgroundAttachment: 'fixed'
+        } : {}}
+      >
+      
         <VirtualizedMessages
           messages={visibleMessages}
           isLoading={isLoading}
@@ -404,6 +668,17 @@ export default function ChatArea({
                   className="hidden"
                   onChange={handleFileChange}
                 />
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  // @ts-ignore
+                  webkitdirectory=""
+                  // @ts-ignore
+                  directory=""
+                  className="hidden"
+                  onChange={handleFolderChange}
+                />
                 {isLoading ? (
                   <>
                     {/* 停止生成按钮 */}
@@ -431,16 +706,28 @@ export default function ChatArea({
                   </>
                 ) : (
                   <>
-                    <Button
-                      size="icon"
-                      type="button"
-                      variant="secondary"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-9 w-9 rounded-full"
-                      aria-label="Attach files"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="icon"
+                        type="button"
+                        variant="secondary"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-9 w-9 rounded-full"
+                        aria-label="上传物料"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        type="button"
+                        variant="secondary"
+                        onClick={() => folderInputRef.current?.click()}
+                        className="h-9 w-9 rounded-full"
+                        aria-label="上传文件夹"
+                      >
+                        <Folder className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <Button
                       size="icon"
                       onClick={handleSendClick}

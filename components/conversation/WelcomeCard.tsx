@@ -11,8 +11,8 @@ type WelcomeCardProps = {
 const quickActions = [
   {
     icon: Code,
-    title: '编写代码',
-    description: '生成、调试、解释代码',
+    title: '批量导入报告物料',
+    description: '上传指定目录',
     color: 'bg-violet-500/10 text-violet-600',
   },
   {

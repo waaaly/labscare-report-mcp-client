@@ -62,6 +62,7 @@ export default function LLMConversationPage() {
     totalTokens: number;
   }>({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
   const [requestCount, setRequestCount] = useState(0);
+  const [showUploadBackground, setShowUploadBackground] = useState(false);
   const [usageHistory, setUsageHistory] = useState<Array<{
     content: string;
     inputTokens: number;
@@ -192,13 +193,18 @@ export default function LLMConversationPage() {
   // 快捷操作处理
   const handleQuickAction = useCallback((action: string) => {
     const prompts: Record<string, string> = {
-      '编写代码': '请帮我编写一段代码，描述你想要实现的功能：',
+      '批量导入报告物料': '选择目录上传，该目录按以下结构：上传目录名称->测试用例文件夹名称->报告名称文件夹->报告物料文件',
       '文档处理': '请帮我处理文档，你可以上传文件或描述需要完成的任务：',
       '问题解答': '请描述你的问题，我会尽力帮你解答：',
       '数据分析': '请提供需要分析的数据或描述数据来源：',
     };
     setInput(prompts[action] || '');
     setIsShowWelcome(false);
+    if (action === '批量导入报告物料') {
+      setShowUploadBackground(true);
+    } else {
+      setShowUploadBackground(false);
+    }
   }, []);
 
   // 插入 prompt 到输入框
@@ -707,6 +713,7 @@ export default function LLMConversationPage() {
             onSearchChange={handleSearchChange}
             highlightedMessageIndex={highlightedMessageIndex}
             onExport={handleExport}
+            showUploadBackground={showUploadBackground}
           />
         )}
       </div>
