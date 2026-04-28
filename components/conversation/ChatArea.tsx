@@ -10,9 +10,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download, Folder } from 'lucide-react';
+import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download, Folder, AlertTriangle, FolderOpen, FileJson, FileText, Image } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { VirtualizedMessages, Msg } from './VirtualizedMessages';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 
 type Props = {
@@ -71,6 +81,10 @@ export default function ChatArea({
   const folderInputRef = React.useRef<HTMLInputElement | null>(null);
   const [localInput, setLocalInput] = React.useState(input);
   const [showSearch, setShowSearch] = React.useState(false);
+  const [validationDialog, setValidationDialog] = React.useState<{
+    open: boolean;
+    result: DirectoryStructure | null;
+  }>({ open: false, result: null });
 
   const addFiles = React.useCallback((files: FileList | File[]) => {
     const list = Array.from(files);
@@ -354,8 +368,7 @@ export default function ChatArea({
     const validation = validateDirectoryStructure(files);
     
     if (!validation.isValid) {
-      const errorMessage = validation.errors.join('\n');
-      alert(`目录结构验证失败：\n\n${errorMessage}`);
+      setValidationDialog({ open: true, result: validation });
       e.currentTarget.value = '';
       return;
     }
@@ -494,6 +507,7 @@ export default function ChatArea({
     [history, historyIndex]
   );
   return (
+    <>
     <Card className="h-full flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="truncate">{title}</CardTitle>
@@ -745,6 +759,190 @@ export default function ChatArea({
         </div>
       </div>
     </Card>
+
+    {/* 目录结构验证失败弹窗 */}
+    <Dialog open={validationDialog.open} onOpenChange={(open) => setValidationDialog(prev => ({ ...prev, open }))}>
+      <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-destructive/10">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <DialogTitle>目录结构验证失败</DialogTitle>
+          </div>
+          <DialogDescription>
+            上传的文件夹不符合系统要求，请检查以下问题后重新上传
+          </DialogDescription>
+        </DialogHeader>
+
+        {validationDialog.result && (
+          <div className="flex-1 overflow-auto space-y-4 pr-1">
+            {/* 全局错误 */}
+            {validationDialog.result.errors.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  全局问题
+                </h4>
+                <div className="space-y-1.5">
+                  {validationDialog.result.errors.map((err, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2 text-sm rounded-md bg-destructive/5 border border-destructive/10 p-2.5"
+                    >
+                      <span className="mt-0.5 min-w-[18px] h-[18px] rounded-full bg-destructive/10 text-destructive text-xs font-medium flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <span className="text-foreground/90 leading-relaxed">{err}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 测试用例明细 */}
+            {validationDialog.result.testCases.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                  测试用例检查明细
+                </h4>
+                <div className="space-y-2">
+                  {validationDialog.result.testCases.map((tc, idx) => {
+                    const tcErrors: string[] = [];
+                    if (!tc.hasRawReportDir) tcErrors.push('缺少"原始报告文件夹"');
+                    if (!tc.hasMaterialDir) tcErrors.push('缺少"报告物料文件"文件夹');
+                    if (tc.missingJson) tcErrors.push('原始报告文件夹缺少 JSON 数据文件');
+                    if (tc.missingMd) tcErrors.push('报告物料文件缺少 Markdown 描述文件');
+                    if (tc.missingImages) tcErrors.push('报告物料文件缺少占位模板图片');
+                    const isValid = tcErrors.length === 0;
+
+                    return (
+                      <div
+                        key={idx}
+                        className={cn(
+                          'rounded-lg border p-3 space-y-2',
+                          isValid
+                            ? 'bg-green-500/5 border-green-500/20'
+                            : 'bg-destructive/5 border-destructive/10'
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{tc.name}</span>
+                          <Badge
+                            variant={isValid ? 'default' : 'destructive'}
+                            className={cn(
+                              'text-xs',
+                              isValid && 'bg-green-500 hover:bg-green-600'
+                            )}
+                          >
+                            {isValid ? '通过' : '未通过'}
+                          </Badge>
+                        </div>
+
+                        {!isValid && (
+                          <div className="space-y-1.5">
+                            {tcErrors.map((err, eidx) => (
+                              <div key={eidx} className="flex items-center gap-2 text-xs text-destructive/90">
+                                <XCircle className="h-3 w-3 flex-shrink-0" />
+                                {err}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 文件清单 */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {tc.hasRawReportDir && (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <FolderOpen className="h-3 w-3" />
+                                原始报告文件夹
+                                {tc.missingJson && <XCircle className="h-3 w-3 text-destructive" />}
+                                {!tc.missingJson && <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>}
+                              </div>
+                              <div className="space-y-0.5">
+                                {tc.rawReportFiles.length > 0 ? tc.rawReportFiles.map((f, fidx) => (
+                                  <div key={fidx} className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                                    <FileJson className="h-3 w-3 text-blue-400" />
+                                    {f}
+                                  </div>
+                                )) : (
+                                  <span className="text-[11px] text-muted-foreground/50">空文件夹</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {tc.hasMaterialDir && (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <FolderOpen className="h-3 w-3" />
+                                报告物料文件
+                                {(tc.missingMd || tc.missingImages) && <XCircle className="h-3 w-3 text-destructive" />}
+                                {!tc.missingMd && !tc.missingImages && <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>}
+                              </div>
+                              <div className="space-y-0.5">
+                                {tc.materialFiles.length > 0 ? tc.materialFiles.map((f, fidx) => (
+                                  <div key={fidx} className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                                    {f.toLowerCase().endsWith('.md') ? (
+                                      <FileText className="h-3 w-3 text-orange-400" />
+                                    ) : (
+                                      <Image className="h-3 w-3 text-green-400" />
+                                    )}
+                                    {f}
+                                  </div>
+                                )) : (
+                                  <span className="text-[11px] text-muted-foreground/50">空文件夹</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 目录结构说明 */}
+            <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
+              <h4 className="text-xs font-semibold text-muted-foreground">期望的目录结构</h4>
+              <div className="font-mono text-xs text-muted-foreground space-y-0.5 leading-relaxed">
+                <div className="flex items-center gap-1.5">
+                  <Folder className="h-3.5 w-3.5 text-blue-400" />
+                  <span>顶层目录/</span>
+                </div>
+                <div className="pl-4 flex items-center gap-1.5">
+                  <Folder className="h-3.5 w-3.5 text-blue-400" />
+                  <span>测试用例1/</span>
+                </div>
+                <div className="pl-8 flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
+                  <span>原始报告文件夹/</span>
+                  <span className="text-[10px] text-destructive/70">(需包含 .json)</span>
+                </div>
+                <div className="pl-8 flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
+                  <span>报告物料文件/</span>
+                  <span className="text-[10px] text-destructive/70">(需包含 .md + 图片)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setValidationDialog({ open: false, result: null })}
+          >
+            关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
