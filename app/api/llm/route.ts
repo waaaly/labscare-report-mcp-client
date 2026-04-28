@@ -129,6 +129,9 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         const encoder = new TextEncoder();
         try {
+          // 用于聚合消息 chunk
+          const messageChunks: any[] = [];
+          
           for await (const event of eventStream) {
             if (event[0] === "updates") {
               logger.info(`[Node Update] 节点 ${Object.keys(event[1])[0]} 执行耗时:`+ (Date.now() - streamStart) + ' ms');
@@ -138,17 +141,41 @@ export async function POST(request: NextRequest) {
               writeToFile(streamMode, chunk);
               if (streamMode === "messages") {
                 const [messageChunk, metadata] = chunk as [any, any];
+                // 保存 chunk 用于聚合
+                messageChunks.push(messageChunk);
+                
                 // logger.info(messageChunk, metadata);
                 const currentNode = metadata.langgraph_node;
 
                 // --- 1. 提取深度思考 (Thought/Reasoning) ---
-                // Qwen 和 DeepSeek 通常将思考内容放在这个字段
-                const reasoning = messageChunk.additional_kwargs?.reasoning_content;
+                // 处理不同厂商的思考内容字段
+                let reasoning = messageChunk.additional_kwargs?.reasoning_content;
+                // 检查其他可能的思考字段
+                if (!reasoning) {
+                  // 检查其他常见的思考字段名称
+                  const possibleReasoningFields = ['reasoning', 'thought', 'thinking', 'rationale'];
+                  for (const field of possibleReasoningFields) {
+                    if (messageChunk.additional_kwargs?.[field]) {
+                      reasoning = messageChunk.additional_kwargs[field];
+                      break;
+                    }
+                  }
+                }
                 if (reasoning) {
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                     type: "thought",
                     text: reasoning
                   })}\n\n`));
+                }
+                
+                // --- 2. 处理其他厂商特有字段 ---
+                if (messageChunk.additional_kwargs) {
+                  // 可以在这里处理其他厂商特有的字段，如搜索来源、模型版本等
+                  // 例如：
+                  // const searchInfo = messageChunk.additional_kwargs.search_info;
+                  // if (searchInfo) {
+                  //   // 处理搜索信息
+                  // }
                 }
 
                 // --- 2. 提取正式回答 (Content) ---
@@ -194,6 +221,11 @@ export async function POST(request: NextRequest) {
               }
             }
           }
+          
+          // 流结束后，可以使用 LangChain 的 concat 方法聚合消息
+          // 这里我们只是记录一下聚合的消息数量，实际聚合逻辑可以根据需要实现
+          logger.info(`共接收 ${messageChunks.length} 个消息 chunk`);
+          
         } catch (err) {
           logger.error("Stream Error:"+ err);
         } finally {
@@ -216,6 +248,10 @@ export async function POST(request: NextRequest) {
               totalTokens: tokenUsage.totalTokens || 0,
             }
           })}\n\n`));
+          
+          // 记录：优先使用模型商返回的 usage 字段，而非手动计数
+          logger.info('[TokenUsage] 使用模型商返回的 usage 字段进行统计');
+          
 
           controller.close();
         }

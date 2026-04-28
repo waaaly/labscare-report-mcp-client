@@ -36,8 +36,13 @@ export class RequestInspector extends BaseCallbackHandler {
     logger.info(`📌 选择的模型: ${modelName}`);
 
     // 可选：额外打印更多信息，方便以后调试其他模型
-    logger.info(`🌐 Base URL: ${llm?.kwargs?.configuration?.baseURL || 'default'}`);
-
+    /**
+     * openai : llm?.kwargs?.configuration?.baseURL
+     * gemini : llm?.kwargs?.base_url
+     * anthropropic : llm?.kwargs?.client_options?.baseURL
+     */
+    logger.info(`🌐 Base URL: ${ llm?.kwargs?.base_url || llm?.kwargs?.client_options?.baseURL || llm?.kwargs?.configuration?.baseURL || 'default'}`);
+    console.log(llm?.kwargs,123);
     // 打印发送的消息列表 (重点检查这里是否有巨大的 Base64)
     if (extraParams?.invocation_params?.messages) {
       logger.info("Messages Count:", extraParams.invocation_params.messages.length);

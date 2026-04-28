@@ -12,16 +12,23 @@ export interface ModelConfig {
 export const availableModels: ModelConfig[] = [
   {
     provider: 'openai' as ModelProvider,
+    model: "Pro/moonshotai/Kimi-K2.5",
+    name: '硅基流动',
+    baseURL: "https://openrouter.ai/api/v1"// process.env.FLOW_API_BASE_URL,
+  },
+  {
+    provider: 'openai' as ModelProvider,
+    model: "deepseek-v4-flash",
+    name: '深度求索',
+    baseURL: "https://api.deepseek.com"// process.env.FLOW_API_BASE_URL,
+  },
+  {
+    provider: 'openai' as ModelProvider,
     model: 'gpt-5.3-codex',
     name: 'ChatGPT',
     baseURL: process.env.OPENAI_BASE_URL,
   },
-   {
-    provider: 'openai' as ModelProvider,
-    model: "Pro/moonshotai/Kimi-K2.5",
-    name: '硅基流动',
-    baseURL:"https://openrouter.ai/api/v1"// process.env.FLOW_API_BASE_URL,
-  },
+
   {
     provider: 'gemini' as ModelProvider,
     model: 'gemini-3-flash-preview',

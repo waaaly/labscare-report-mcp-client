@@ -31,7 +31,21 @@ export class TokenUsageInspector extends BaseCallbackHandler {
       // 从 output.llmOutput 中获取 usage 信息
       // LangChain 会在此字段中返回 usage
       const llmOutput = output?.llmOutput;
-      
+      // console.log(llmOutput,123);
+       if (llmOutput?.tokenUsage) {
+        this.tokenUsage = {
+          promptTokens: llmOutput.tokenUsage.promptTokens || llmOutput.tokenUsage.input_tokens || 0,
+          completionTokens: llmOutput.tokenUsage.completionTokens || llmOutput.tokenUsage.output_tokens || 0,
+          totalTokens: llmOutput.tokenUsage.totalTokens || 0,
+        };
+        
+        logger.info({ tokenUsage: this.tokenUsage }, '[TokenUsage] 获取到 token 使用量');
+        
+        // 如果有回调，立即通知
+        if (this.onTokenUsageCallback) {
+          this.onTokenUsageCallback(this.tokenUsage);
+        }
+      }
       if (llmOutput?.usage) {
         this.tokenUsage = {
           promptTokens: llmOutput.usage.prompt_tokens || llmOutput.usage.input_tokens || 0,

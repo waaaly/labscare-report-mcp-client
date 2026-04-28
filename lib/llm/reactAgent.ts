@@ -1,4 +1,4 @@
-import { createAgent } from "langchain";
+import { createAgent, ReactAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatAnthropic } from "@langchain/anthropic";
@@ -8,6 +8,7 @@ import * as path from "path";
 import { setGlobalDispatcher, ProxyAgent } from "undici";
 import { logger, RequestInspector } from '@/lib/logger';
 import { ModelProvider, ModelConfig, availableModels } from "./model-config";
+
 import { getSharedLlm } from "./agent-factory";
 // 1. 设置全局代理（替换为你的魔法端口，如 7890 或 1080）
 const proxyAgent = new ProxyAgent("http://127.0.0.1:7897");
@@ -19,14 +20,18 @@ function getOpenAIKey(config: ModelConfig) {
       return process.env.OPENAI_API_KEY || "";
     case 'Pro/moonshotai/Kimi-K2.5':
       return process.env.FLOW_API_KEY || "";
+    case 'deepseek-v4-flash':
+      return process.env.DEEPSEEK_API_KEY || "";
   }
 }
 function getOpenAIUrl(config: ModelConfig) {
   switch (config.model) {
     case 'gpt-5.3-codex':
-      return process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1";
+      return process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
     case 'Pro/moonshotai/Kimi-K2.5':
       return process.env.FLOW_API_BASE_URL || "https://openrouter.ai/api/v1";
+    case 'deepseek-v4-flash':
+      return config.baseURL || process.env.DEEPSEEK_API_BASE_URL || "https://api.deepseek.com";
   }
 }
 // 初始化指定模型
@@ -54,36 +59,39 @@ function initializeModel(config: ModelConfig) {
 
     case 'gemini':
       return new ChatGoogleGenerativeAI({
-        baseUrl: config.baseURL || process.env.GOOGLE_BASE_URL,
-        apiKey: config.apiKey || process.env.GOOGLE_API_KEY || "",
+        baseUrl: process.env.GEMINI_BASE_URL || config.baseURL,
+        apiKey: process.env.GEMINI_API_KEY || config.apiKey,
         model: config.model,
         temperature: 0.1,
         maxOutputTokens: 8192,
         maxRetries: 5,
         streaming: true,
+        callbacks: [
+          new RequestInspector(),
+        ],
       });
 
     case 'anthropic':
       return new ChatAnthropic({
-        anthropicApiKey: config.apiKey || process.env.ANTHROPIC_API_KEY || "",
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY || config.apiKey,
         model: config.model,
         maxRetries: 3,
         streaming: true,
         clientOptions: {
-          apiKey:config.apiKey || process.env.ANTHROPIC_API_KEY || "",
-          baseURL: config.baseURL || process.env.ANTHROPIC_BASE_URL,
+          apiKey: process.env.ANTHROPIC_API_KEY || config.apiKey,
+          baseURL: process.env.ANTHROPIC_BASE_URL || config.baseURL,
         },
         callbacks: [
           new RequestInspector(),
         ],
       });
-    
+
     default:
       throw new Error(`Unsupported model provider: ${config.provider}`);
   }
 }
 
-async function initializeAgentWithModel(modelConfig: ModelConfig) {
+async function initializeAgentWithModel(modelConfig: ModelConfig): Promise<ReactAgent> {
   const llm = initializeModel(modelConfig);
   const skillPath = path.join(process.cwd(), "skills", "labscare-script");
   // 1. 明确等待工具加载
@@ -158,22 +166,16 @@ async function initializeAgentWithModel(modelConfig: ModelConfig) {
 }
 
 // 缓存不同模型的 agent 实例
-const agentInstances: Record<string, any> = {};
+const agentInstances: Record<string, ReactAgent> = {};
 
 // 生成 agent 实例的键
 function getAgentKey(config: ModelConfig): string {
   return `${config.provider}:${config.model}`;
 }
 
-export async function getAgent(modelConfig?: ModelConfig): Promise<any> {
+export async function getAgent(modelConfig?: ModelConfig): Promise<ReactAgent> {
   // 默认模型配置
-  const defaultConfig: ModelConfig = {
-    provider: 'openai',
-    model: 'gpt-5.3-codex',
-    name: 'ChatGPT',
-    baseURL: process.env.OPENAI_API_BASE_URL,
-  };
-
+  const defaultConfig: ModelConfig = availableModels[0];
   const config = modelConfig || defaultConfig;
   const key = getAgentKey(config);
 
