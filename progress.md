@@ -29,8 +29,8 @@ npm run lint
 
 ### 当前最高优先级未完成功能
 根据 feature_list.json，P0、P1、P2 已全部完成。
-已完成功能：模型切换（P3）
-下一个功能：消息分支、Token 统计、Skill 切换（P3）
+已完成功能：模型切换（P3）、Token 统计重构、文件夹上传验证弹窗
+下一个功能：消息分支、Skill 切换（P3）
 
 ### 当前 Blocker
 无
@@ -136,6 +136,18 @@ npm run lint
 | **提交记录** | 3168ed7 |
 | **已知风险或未解决问题** | 无 |
 | **下一步最佳动作** | 继续实现 P3 功能（消息分支、Skill 切换）或处理其他优先级任务 |
+
+### 2026-04-28 11:32 - 第 8 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 修正文件夹上传验证逻辑：测试用例/原始报告文件夹的判断规则重新对齐业务定义 |
+| **已完成** | 1. 重写 `DirectoryStructure` 接口（新字段：jsonFiles/missingJson/missingTemplatePng/missingDescMd）<br>2. 重写 `validateDirectoryStructure` 核心逻辑<br>   - 测试用例判断：直接含 样品数据.json 或 流程数据.json（至少一个）<br>   - 原始报告文件夹判断：含 占位符模板.png + 占位符描述文件.md<br>3. 更新 Dialog 弹窗目录结构树说明<br>4. 更新测试用例明细卡片（文件清单 ✓/✗ 逐行标注） |
+| **运行过的验证** | `npm run typecheck` - ✅ 通过 |
+| **已记录证据** | - components/conversation/ChatArea.tsx 修改 |
+| **提交记录** | 待提交 |
+| **已知风险或未解决问题** | npm run lint 有已知工具链错误（非本次引入） |
+| **下一步最佳动作** | 提交本次变更，继续推进 P3 功能（Skill 切换、消息分支）或其他用户需求 |
 
 ---
 

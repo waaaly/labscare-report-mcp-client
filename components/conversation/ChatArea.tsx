@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download, Folder, AlertTriangle, FolderOpen, FileJson, FileText, Image } from 'lucide-react';
+import { Loader2, Send, Paperclip, X, Image as ImageIcon, File as FileIcon, Square, RefreshCw, Search, XCircle, Download, Folder, AlertTriangle, FolderOpen, FileJson, FileText, Image, ChevronDown, ChevronRight } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { VirtualizedMessages, Msg } from './VirtualizedMessages';
 import {
@@ -24,6 +24,267 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+
+/** ── 校验通过目录结构展示面板 ── */
+interface RawReportDir {
+  name: string;
+  files: string[];
+  templatePngs: string[];
+  descMd: string | null;
+  missingTemplatePng: boolean;
+  missingDescMd: boolean;
+}
+
+interface DirectoryStructure {
+  topLevelDir: string;
+  testCases: {
+    name: string;
+    jsonFiles: string[];
+    missingJson: boolean;
+    rawReportDirs: RawReportDir[];
+  }[];
+  isValid: boolean;
+  errors: string[];
+}
+
+function ValidatedStructurePanel({
+  data,
+  onRemove,
+}: {
+  data: {
+    structure: DirectoryStructure;
+    files: File[];
+    previews: Map<string, { preview?: string; previewText?: string }>;
+  };
+  onRemove: () => void;
+}) {
+  const [rootOpen, setRootOpen] = React.useState(true);
+  const [openProjects, setOpenProjects] = React.useState<Set<number>>(() => {
+    // 默认全部展开
+    const s = new Set<number>();
+    data.structure.testCases.forEach((_, i) => s.add(i));
+    return s;
+  });
+  const [openReports, setOpenReports] = React.useState<Set<string>>(() => {
+    // 默认全部展开，key 为 "tcIdx-rdIdx"
+    const s = new Set<string>();
+    data.structure.testCases.forEach((tc, tcIdx) => {
+      tc.rawReportDirs.forEach((_, rdIdx) => s.add(`${tcIdx}-${rdIdx}`));
+    });
+    return s;
+  });
+
+  const toggleProject = (idx: number) => {
+    setOpenProjects(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleReport = (key: string) => {
+    setOpenReports(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div className="px-3 pt-3 pb-2 border-b">
+      {/* ── 顶部：可展开/收起 ── */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 hover:bg-muted/50 rounded px-1 py-0.5 -ml-1 transition-colors"
+          onClick={() => setRootOpen(v => !v)}
+        >
+          {rootOpen
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          <FolderOpen className="h-4 w-4 text-green-600" />
+          <span className="text-sm font-medium">上传目录</span>
+          <Badge className="text-[10px] h-5 bg-green-500 hover:bg-green-600">
+            {data.structure.testCases.length} 个项目
+          </Badge>
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="rounded bg-background/80 hover:bg-background p-1"
+          aria-label="移除目录结构"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* ── 展开内容 ── */}
+      {rootOpen && (
+        <div className="mt-2 space-y-1.5 max-h-72 overflow-auto pr-1">
+          {data.structure.testCases.map((tc, tcIdx) => {
+            const tcPathPrefix = `${data.structure.topLevelDir}/${tc.name}`;
+            const projectOpen = openProjects.has(tcIdx);
+            const reportCount = tc.rawReportDirs.length;
+
+            return (
+              <div key={tcIdx} className="rounded-lg border border-green-500/20 bg-green-500/5">
+                {/* 项目头部：可点击展开/收起 */}
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 bg-green-500/10 border-b border-green-500/10 hover:bg-green-500/15 transition-colors"
+                  onClick={() => toggleProject(tcIdx)}
+                >
+                  {projectOpen
+                    ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                  <Folder className="h-4 w-4 text-blue-400" />
+                  <span className="text-sm font-medium">{tc.name}</span>
+                  <span className="text-[10px] text-muted-foreground">项目</span>
+                  <Badge variant="secondary" className="text-[10px] h-4 ml-auto">
+                    {reportCount} 个报告
+                  </Badge>
+                </button>
+
+                {/* 项目内容 */}
+                {projectOpen && (
+                  <div className="px-3 py-2 space-y-2">
+                    {/* JSON 数据文件（共享） — 水平排列 */}
+                    {tc.jsonFiles.length > 0 && (
+                      <div className="pl-5">
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
+                          <FileJson className="h-3 w-3 text-sky-400" />
+                          <span>数据文件</span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {tc.jsonFiles.map((jf, jfIdx) => {
+                            const rp = `${tcPathPrefix}/${jf}`;
+                            const pv = data.previews.get(rp);
+                            const fileObj = data.files.find(f => (f as any).webkitRelativePath === rp);
+                            return (
+                              <div key={jfIdx} className="flex-shrink-0 w-48 rounded border bg-background overflow-hidden">
+                                <div className="px-2 py-1.5 border-b bg-muted/30 flex items-center gap-1">
+                                  <FileJson className="h-3 w-3 text-sky-400" />
+                                  <span className="text-[10px] font-medium truncate">{jf}</span>
+                                </div>
+                                <div className="p-1.5">
+                                  <div className="h-14 w-full overflow-auto rounded bg-muted/60 p-1.5 text-[9px] leading-snug">
+                                    {pv?.previewText ? (
+                                      <pre className="whitespace-pre-wrap">{pv.previewText}</pre>
+                                    ) : (
+                                      <div className="flex items-center gap-1 text-muted-foreground">
+                                        <FileIcon className="h-3 w-3" />
+                                        <span>Loading…</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {fileObj && (
+                                    <div className="mt-0.5 text-[9px] text-muted-foreground">
+                                      {(fileObj.size / 1024).toFixed(1)} KB
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 原始报告目录 */}
+                    {tc.rawReportDirs.map((rd, rdIdx) => {
+                      const rdPathPrefix = `${tcPathPrefix}/${rd.name}`;
+                      const reportKey = `${tcIdx}-${rdIdx}`;
+                      const reportOpen = openReports.has(reportKey);
+
+                      return (
+                        <div key={rdIdx} className="pl-5 border-l-2 border-amber-500/20">
+                          {/* 报告头部：可点击展开/收起 */}
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-1.5 py-1 hover:bg-amber-500/5 rounded px-1 -ml-1 transition-colors"
+                            onClick={() => toggleReport(reportKey)}
+                          >
+                            {reportOpen
+                              ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                              : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                            <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
+                            <span className="text-xs font-medium">{rd.name}</span>
+                            <span className="text-[10px] text-muted-foreground">报告</span>
+                          </button>
+
+                          {/* 报告内容：物料水平排列 */}
+                          {reportOpen && (
+                            <div className="pl-4 pb-1">
+                              <div className="flex gap-2 overflow-x-auto pb-1">
+                                {/* 模板图片 */}
+                                {rd.templatePngs.map((png, pngIdx) => {
+                                  const rp = `${rdPathPrefix}/${png}`;
+                                  const pv = data.previews.get(rp);
+                                  return (
+                                    <div key={pngIdx} className="flex-shrink-0 w-28 rounded border bg-background overflow-hidden">
+                                      <div className="h-20 w-full">
+                                        {pv?.preview ? (
+                                          <img src={pv.preview} alt={png} className="h-full w-full object-cover" />
+                                        ) : (
+                                          <div className="h-full flex items-center justify-center text-muted-foreground">
+                                            <ImageIcon className="h-4 w-4" />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="px-1.5 py-1 text-[9px] truncate text-muted-foreground flex items-center gap-0.5">
+                                        <Image className="h-2.5 w-2.5 text-green-400" />
+                                        {png}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {/* 描述文档 */}
+                                {rd.descMd && (() => {
+                                  const rp = `${rdPathPrefix}/${rd.descMd}`;
+                                  const pv = data.previews.get(rp);
+                                  const fileObj = data.files.find(f => (f as any).webkitRelativePath === rp);
+                                  return (
+                                    <div className="flex-shrink-0 w-48 rounded border bg-background overflow-hidden">
+                                      <div className="px-2 py-1.5 border-b bg-muted/30 flex items-center gap-1">
+                                        <FileText className="h-3 w-3 text-orange-400" />
+                                        <span className="text-[10px] font-medium truncate">{rd.descMd}</span>
+                                      </div>
+                                      <div className="p-1.5">
+                                        <div className="h-14 w-full overflow-auto rounded bg-muted/60 p-1.5 text-[9px] leading-snug">
+                                          {pv?.previewText ? (
+                                            <pre className="whitespace-pre-wrap">{pv.previewText}</pre>
+                                          ) : (
+                                            <div className="flex items-center gap-1 text-muted-foreground">
+                                              <FileIcon className="h-3 w-3" />
+                                              <span>Loading…</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {fileObj && (
+                                          <div className="mt-0.5 text-[9px] text-muted-foreground">
+                                            {(fileObj.size / 1024).toFixed(1)} KB
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Props = {
   title?: string;
@@ -84,7 +345,17 @@ export default function ChatArea({
   const [validationDialog, setValidationDialog] = React.useState<{
     open: boolean;
     result: DirectoryStructure | null;
-  }>({ open: false, result: null });
+    /** 待确认后添加的文件列表 */
+    pendingFiles: File[];
+  }>({ open: false, result: null, pendingFiles: [] });
+
+  /** 校验通过并确认后的目录结构（含文件引用），按层级展示在输入框上方 */
+  const [validatedStructure, setValidatedStructure] = React.useState<{
+    structure: DirectoryStructure;
+    files: File[];
+    /** 物料文件预览信息：key 为 relativePath */
+    previews: Map<string, { preview?: string; previewText?: string }>;
+  } | null>(null);
 
   const addFiles = React.useCallback((files: FileList | File[]) => {
     const list = Array.from(files);
@@ -173,22 +444,6 @@ export default function ChatArea({
     return null;
   }, []);
 
-  interface DirectoryStructure {
-    topLevelDir: string;
-    testCases: {
-      name: string;
-      hasRawReportDir: boolean;
-      hasMaterialDir: boolean;
-      rawReportFiles: string[];
-      materialFiles: string[];
-      missingJson: boolean;
-      missingMd: boolean;
-      missingImages: boolean;
-    }[];
-    isValid: boolean;
-    errors: string[];
-  }
-
   const validateDirectoryStructure = React.useCallback((files: File[]): DirectoryStructure => {
     const result: DirectoryStructure = {
       topLevelDir: '',
@@ -261,98 +516,95 @@ export default function ChatArea({
       if (!testCase || testCase.type !== 'dir') {
         result.testCases.push({
           name: testCaseName,
-          hasRawReportDir: false,
-          hasMaterialDir: false,
-          rawReportFiles: [],
-          materialFiles: [],
+          jsonFiles: [],
           missingJson: true,
-          missingMd: true,
-          missingImages: true
+          rawReportDirs: [],
         });
         result.isValid = false;
-        result.errors.push(`测试用例 "${testCaseName}" 不是有效的目录`);
+        result.errors.push(`"${testCaseName}" 不是有效的目录`);
         return;
       }
 
-      const hasRawReportDir = testCase.children?.includes('原始报告文件夹') || false;
-      const hasMaterialDir = testCase.children?.includes('报告物料文件') || false;
-      
-      const rawReportFiles: string[] = [];
-      const materialFiles: string[] = [];
-      let missingJson = true;
-      let missingMd = true;
-      let missingImages = true;
+      // ── 1. 判断测试用例文件夹：直接在目录下找 样品数据.json / 流程数据.json ──
+      const TEST_CASE_JSON = ['样品数据.json', '流程数据.json'];
+      const jsonFiles: string[] = [];
+      (testCase.children || []).forEach(child => {
+        const childPath = `${testCasePath}/${child}`;
+        const childEntry = pathMap.get(childPath);
+        if (childEntry?.type === 'file' && TEST_CASE_JSON.includes(child)) {
+          jsonFiles.push(child);
+        }
+      });
+      const missingJson = jsonFiles.length === 0;
 
-      if (hasRawReportDir) {
-        const rawReportPath = `${testCasePath}/原始报告文件夹`;
-        const rawReport = pathMap.get(rawReportPath);
-        if (rawReport && rawReport.children) {
-          rawReport.children.forEach(child => {
-            const filePath = `${rawReportPath}/${child}`;
-            const fileEntry = pathMap.get(filePath);
-            if (fileEntry?.type === 'file') {
-              rawReportFiles.push(child);
-              if (child.toLowerCase().endsWith('.json')) {
-                missingJson = false;
-              }
+      // ── 2. 判断原始报告目录：遍历子目录，找含 .png 模板 + .md 描述的目录（可有多个） ──
+      const rawReportDirs: RawReportDir[] = [];
+
+      (testCase.children || []).forEach(child => {
+        const childPath = `${testCasePath}/${child}`;
+        const childEntry = pathMap.get(childPath);
+        if (childEntry?.type !== 'dir') return;
+
+        const dirFiles: string[] = [];
+        const templatePngs: string[] = [];
+        let descMd: string | null = null;
+
+        (childEntry.children || []).forEach(grandchild => {
+          const gcPath = `${childPath}/${grandchild}`;
+          const gcEntry = pathMap.get(gcPath);
+          if (gcEntry?.type === 'file') {
+            dirFiles.push(grandchild);
+            if (grandchild.match(/^(占位符模板|模板占位符).*\.png$/i)) {
+              templatePngs.push(grandchild);
             }
+            if (grandchild.match(/^(占位符描述|描述占位符).*\.md$/i)) {
+              descMd = grandchild;
+            }
+          }
+        });
+
+        // 只要有模板图或描述文件就视为原始报告目录候选
+        if (templatePngs.length > 0 || descMd) {
+          rawReportDirs.push({
+            name: child,
+            files: dirFiles,
+            templatePngs,
+            descMd,
+            missingTemplatePng: templatePngs.length === 0,
+            missingDescMd: descMd === null,
           });
         }
-      }
-
-      if (hasMaterialDir) {
-        const materialPath = `${testCasePath}/报告物料文件`;
-        const material = pathMap.get(materialPath);
-        if (material && material.children) {
-          material.children.forEach(child => {
-            const filePath = `${materialPath}/${child}`;
-            const fileEntry = pathMap.get(filePath);
-            if (fileEntry?.type === 'file') {
-              materialFiles.push(child);
-              if (child.toLowerCase().endsWith('.md')) {
-                missingMd = false;
-              }
-              if (child.match(/\.(jpg|jpeg|png|gif|bmp)$/i)) {
-                missingImages = false;
-              }
-            }
-          });
-        }
-      }
+      });
 
       result.testCases.push({
         name: testCaseName,
-        hasRawReportDir,
-        hasMaterialDir,
-        rawReportFiles,
-        materialFiles,
+        jsonFiles,
         missingJson,
-        missingMd,
-        missingImages
+        rawReportDirs,
       });
 
-      if (!hasRawReportDir) {
+      // ── 3. 错误收集 ──
+      if (missingJson) {
         result.isValid = false;
-        result.errors.push(`测试用例 "${testCaseName}" 缺少 "原始报告文件夹"`);
+        result.errors.push(`"${testCaseName}" 不是有效的测试用例（缺少 样品数据.json 或 流程数据.json）`);
       }
-      if (!hasMaterialDir) {
+      if (rawReportDirs.length === 0) {
         result.isValid = false;
-        result.errors.push(`测试用例 "${testCaseName}" 缺少 "报告物料文件" 文件夹`);
+        result.errors.push(`"${testCaseName}" 缺少原始报告目录（需含占位符模板.png + 占位符描述文档.md）`);
       }
-      if (hasRawReportDir && missingJson) {
-        result.isValid = false;
-        result.errors.push(`测试用例 "${testCaseName}" 的 "原始报告文件夹" 缺少 JSON 数据文件（样品数据.json 或 流程数据.json）`);
-      }
-      if (hasMaterialDir && missingMd) {
-        result.isValid = false;
-        result.errors.push(`测试用例 "${testCaseName}" 的 "报告物料文件" 缺少 Markdown 描述文件（.md）`);
-      }
-      if (hasMaterialDir && missingImages) {
-        result.isValid = false;
-        result.errors.push(`测试用例 "${testCaseName}" 的 "报告物料文件" 缺少占位模板图片（.jpg, .png 等）`);
-      }
+      rawReportDirs.forEach(rd => {
+        if (rd.missingTemplatePng) {
+          result.isValid = false;
+          result.errors.push(`"${testCaseName}/${rd.name}" 缺少占位符模板图片（.png）`);
+        }
+        if (rd.missingDescMd) {
+          result.isValid = false;
+          result.errors.push(`"${testCaseName}/${rd.name}" 缺少占位符描述文档.md`);
+        }
+      });
     });
-
+    console.log(result);
+    
     return result;
   }, []);
 
@@ -367,15 +619,10 @@ export default function ChatArea({
     
     const validation = validateDirectoryStructure(files);
     
-    if (!validation.isValid) {
-      setValidationDialog({ open: true, result: validation });
-      e.currentTarget.value = '';
-      return;
-    }
-    
-    if (files.length > 0) addFiles(files);
+    // 始终弹出确认弹窗，让用户确认映射关系
+    setValidationDialog({ open: true, result: validation, pendingFiles: files });
     e.currentTarget.value = '';
-  }, [addFiles, validateDirectoryStructure]);
+  }, [validateDirectoryStructure]);
 
   const handleDrop = React.useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -406,18 +653,27 @@ export default function ChatArea({
   }, []);
 
   const handleSendClick = React.useCallback(() => {
-    const files = attachments.map(a => a.file);
+    const attachmentFiles = attachments.map(a => a.file);
+    const validatedFiles = validatedStructure?.files || [];
+    const allFiles = [...attachmentFiles, ...validatedFiles];
 
-    if (attachments.length > 0) {
+    if (attachments.length > 0 || validatedFiles.length > 0) {
       setAttachments(prev => {
         prev.forEach(i => i.preview && URL.revokeObjectURL(i.preview));
         return [];
       });
+      // 清理 validatedStructure 的预览
+      if (validatedStructure) {
+        validatedStructure.previews.forEach(v => {
+          if (v.preview) URL.revokeObjectURL(v.preview);
+        });
+        setValidatedStructure(null);
+      }
       onFilesChange?.([]);
     }
     onSend(localInput);
     setLocalInput('');
-  }, [onSend,  localInput, setLocalInput, attachments, onFilesChange]);
+  }, [onSend, localInput, setLocalInput, attachments, onFilesChange, validatedStructure]);
 
   const handleKeyPress = React.useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -617,6 +873,19 @@ export default function ChatArea({
               onDrop={handleDrop}
               onDragOver={handleDragOver}
             >
+              {validatedStructure && (
+                <ValidatedStructurePanel
+                  data={validatedStructure}
+                  onRemove={() => {
+                    validatedStructure.previews.forEach(v => {
+                      if (v.preview) URL.revokeObjectURL(v.preview);
+                    });
+                    setValidatedStructure(null);
+                    onFilesChange?.(attachments.map(a => a.file));
+                  }}
+                />
+              )}
+
               {attachments.length > 0 && (
                 <div className="px-3 pt-3 pb-2">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-auto pr-1">
@@ -745,7 +1014,7 @@ export default function ChatArea({
                     <Button
                       size="icon"
                       onClick={handleSendClick}
-                      disabled={(!localInput.trim() && attachments.length === 0)}
+                      disabled={(!localInput.trim() && attachments.length === 0 && !validatedStructure)}
                       className="h-9 w-9 rounded-full"
                       aria-label="Send message"
                     >
@@ -760,87 +1029,190 @@ export default function ChatArea({
       </div>
     </Card>
 
-    {/* 目录结构验证失败弹窗 */}
-    <Dialog open={validationDialog.open} onOpenChange={(open) => setValidationDialog(prev => ({ ...prev, open }))}>
+    {/* 目录结构验证确认弹窗 */}
+    <Dialog open={validationDialog.open} onOpenChange={(open) => {
+      if (!open) setValidationDialog(prev => ({ ...prev, open }));
+    }}>
       <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-md bg-destructive/10">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
+            <div className={cn(
+              'p-1.5 rounded-md',
+              validationDialog.result?.isValid ? 'bg-green-500/10' : 'bg-destructive/10'
+            )}>
+              {validationDialog.result?.isValid
+                ? <FolderOpen className="h-5 w-5 text-green-600" />
+                : <AlertTriangle className="h-5 w-5 text-destructive" />}
             </div>
-            <DialogTitle>目录结构验证失败</DialogTitle>
+            <DialogTitle>
+              {validationDialog.result?.isValid ? '目录结构验证通过' : '目录结构验证未通过'}
+            </DialogTitle>
           </div>
           <DialogDescription>
-            上传的文件夹不符合系统要求，请检查以下问题后重新上传
+            {validationDialog.result?.isValid
+              ? 'Agent 将按照以下映射关系创建项目和报告，请确认后上传'
+              : '部分目录不符合要求，请检查以下问题后重新上传'}
           </DialogDescription>
         </DialogHeader>
 
-        {validationDialog.result && (
-          <div className="flex-1 overflow-auto space-y-4 pr-1">
-            {/* 全局错误 */}
-            {validationDialog.result.errors.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-destructive" />
-                  全局问题
-                </h4>
-                <div className="space-y-1.5">
-                  {validationDialog.result.errors.map((err, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-2 text-sm rounded-md bg-destructive/5 border border-destructive/10 p-2.5"
-                    >
-                      <span className="mt-0.5 min-w-[18px] h-[18px] rounded-full bg-destructive/10 text-destructive text-xs font-medium flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <span className="text-foreground/90 leading-relaxed">{err}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+        {validationDialog.result && (() => {
+          type TestCase = DirectoryStructure['testCases'][number];
+          const isTestCaseValid = (tc: TestCase) => {
+            if (tc.missingJson) return false;
+            if (tc.rawReportDirs.length === 0) return false;
+            return tc.rawReportDirs.every(rd => !rd.missingTemplatePng && !rd.missingDescMd);
+          };
+          const passed = validationDialog.result.testCases.filter(isTestCaseValid);
+          const failed = validationDialog.result.testCases.filter(tc => !isTestCaseValid(tc));
 
-            {/* 测试用例明细 */}
-            {validationDialog.result.testCases.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                  测试用例检查明细
-                </h4>
+          return (
+            <div className="flex-1 overflow-auto space-y-4 pr-1">
+              {/* 通过检查的目录：映射提示 */}
+              {passed.length > 0 && (
                 <div className="space-y-2">
-                  {validationDialog.result.testCases.map((tc, idx) => {
-                    const tcErrors: string[] = [];
-                    if (!tc.hasRawReportDir) tcErrors.push('缺少"原始报告文件夹"');
-                    if (!tc.hasMaterialDir) tcErrors.push('缺少"报告物料文件"文件夹');
-                    if (tc.missingJson) tcErrors.push('原始报告文件夹缺少 JSON 数据文件');
-                    if (tc.missingMd) tcErrors.push('报告物料文件缺少 Markdown 描述文件');
-                    if (tc.missingImages) tcErrors.push('报告物料文件缺少占位模板图片');
-                    const isValid = tcErrors.length === 0;
-
-                    return (
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <FolderOpen className="h-4 w-4 text-green-600" />
+                    通过检查的目录
+                    <Badge className="text-[10px] h-5 bg-green-500 hover:bg-green-600">{passed.length}</Badge>
+                  </h4>
+                  <div className="space-y-2">
+                    {passed.map((tc, idx) => (
                       <div
                         key={idx}
-                        className={cn(
-                          'rounded-lg border p-3 space-y-2',
-                          isValid
-                            ? 'bg-green-500/5 border-green-500/20'
-                            : 'bg-destructive/5 border-destructive/10'
-                        )}
+                        className="rounded-lg border border-green-500/20 bg-green-500/5 p-3 space-y-2.5"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{tc.name}</span>
-                          <Badge
-                            variant={isValid ? 'default' : 'destructive'}
-                            className={cn(
-                              'text-xs',
-                              isValid && 'bg-green-500 hover:bg-green-600'
-                            )}
-                          >
-                            {isValid ? '通过' : '未通过'}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Folder className="h-4 w-4 text-blue-400" />
+                            <span className="text-sm font-medium">{tc.name}</span>
+                          </div>
+                          <Badge className="text-[10px] h-5 bg-green-500 hover:bg-green-600">通过</Badge>
                         </div>
 
-                        {!isValid && (
+                        {/* 映射提示 */}
+                        <div className="space-y-1.5 pl-2 border-l-2 border-green-500/20">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">目录名称</span>
+                            <span className="font-mono text-foreground/80">{tc.name}</span>
+                            <span className="text-green-600">→</span>
+                            <span className="font-medium text-green-700">项目名称</span>
+                          </div>
+                          {tc.rawReportDirs.map((rd, ridx) => (
+                            <div key={ridx} className="space-y-1 pl-2 border-l border-green-500/15">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-muted-foreground">报告目录</span>
+                                <span className="font-mono text-foreground/80">{rd.name}</span>
+                                <span className="text-green-600">→</span>
+                                <span className="font-medium text-green-700">报告名称</span>
+                              </div>
+                              <div className="flex items-start gap-2 text-xs">
+                                <span className="text-muted-foreground">物料文件</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {rd.templatePngs.map((f, fidx) => (
+                                    <span key={fidx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-500/10 text-green-700 font-mono text-[10px]">
+                                      <Image className="h-2.5 w-2.5" />
+                                      {f}
+                                    </span>
+                                  ))}
+                                  {rd.descMd && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-500/10 text-green-700 font-mono text-[10px]">
+                                      <FileText className="h-2.5 w-2.5" />
+                                      {rd.descMd}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-green-600">→</span>
+                                <span className="font-medium text-green-700">报告物料</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 文件清单 */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <FileJson className="h-3 w-3 text-sky-400" />
+                              数据文件（共享）
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>
+                            </div>
+                            {['样品数据.json', '流程数据.json'].map(fname => {
+                              const found = tc.jsonFiles.includes(fname);
+                              return (
+                                <div key={fname} className="flex items-center gap-1 text-[11px] text-muted-foreground/80 pl-4">
+                                  {found
+                                    ? <span className="text-green-500">✓</span>
+                                    : <span className="text-muted-foreground/40">✗</span>}
+                                  <span className={found ? '' : 'text-muted-foreground/40'}>{fname}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="space-y-1.5">
+                            {tc.rawReportDirs.map((rd, ridx) => (
+                              <div key={ridx} className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                  <FolderOpen className="h-3 w-3 text-amber-400" />
+                                  {rd.name}
+                                  <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>
+                                </div>
+                                <div className="pl-4 space-y-0.5">
+                                  {rd.templatePngs.map((f, fidx) => (
+                                    <div key={fidx} className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                                      <span className="text-green-500">✓</span>
+                                      <Image className="h-3 w-3 text-green-400" />
+                                      <span>{f}</span>
+                                    </div>
+                                  ))}
+                                  {rd.descMd && (
+                                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                                      <span className="text-green-500">✓</span>
+                                      <FileText className="h-3 w-3 text-orange-400" />
+                                      <span>{rd.descMd}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 未通过检查的目录 */}
+              {failed.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-destructive" />
+                    未通过检查的目录
+                    <Badge variant="destructive" className="text-[10px] h-5">{failed.length}</Badge>
+                  </h4>
+                  <div className="space-y-2">
+                    {failed.map((tc, idx) => {
+                      const tcErrors: string[] = [];
+                      if (tc.missingJson) tcErrors.push('缺少 样品数据.json 或 流程数据.json（至少一个）');
+                      if (tc.rawReportDirs.length === 0) tcErrors.push('缺少原始报告目录（需含占位符模板.png + 占位符描述文档.md）');
+                      tc.rawReportDirs.forEach(rd => {
+                        if (rd.missingTemplatePng) tcErrors.push(`${rd.name} 缺少占位符模板图片（.png）`);
+                        if (rd.missingDescMd) tcErrors.push(`${rd.name} 缺少占位符描述文档.md`);
+                      });
+
+                      return (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-destructive/10 bg-destructive/5 p-3 space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Folder className="h-4 w-4 text-blue-400" />
+                              <span className="text-sm font-medium">{tc.name}</span>
+                            </div>
+                            <Badge variant="destructive" className="text-[10px] h-5">未通过</Badge>
+                          </div>
+
                           <div className="space-y-1.5">
                             {tcErrors.map((err, eidx) => (
                               <div key={eidx} className="flex items-center gap-2 text-xs text-destructive/90">
@@ -849,96 +1221,236 @@ export default function ChatArea({
                               </div>
                             ))}
                           </div>
-                        )}
 
-                        {/* 文件清单 */}
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          {tc.hasRawReportDir && (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <FolderOpen className="h-3 w-3" />
-                                原始报告文件夹
-                                {tc.missingJson && <XCircle className="h-3 w-3 text-destructive" />}
-                                {!tc.missingJson && <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>}
+                          {/* 文件清单（即使未通过也显示已有文件） */}
+                          <div className="space-y-1.5 pt-1">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <FileJson className="h-3 w-3 text-sky-400" />
+                                数据文件
+                                {tc.missingJson
+                                  ? <XCircle className="h-3 w-3 text-destructive" />
+                                  : <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>}
                               </div>
-                              <div className="space-y-0.5">
-                                {tc.rawReportFiles.length > 0 ? tc.rawReportFiles.map((f, fidx) => (
-                                  <div key={fidx} className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
-                                    <FileJson className="h-3 w-3 text-blue-400" />
-                                    {f}
+                              {['样品数据.json', '流程数据.json'].map(fname => {
+                                const found = tc.jsonFiles.includes(fname);
+                                return (
+                                  <div key={fname} className="flex items-center gap-1 text-[11px] text-muted-foreground/80 pl-4">
+                                    {found
+                                      ? <span className="text-green-500">✓</span>
+                                      : <span className="text-muted-foreground/40">✗</span>}
+                                    <span className={found ? '' : 'text-muted-foreground/40'}>{fname}</span>
                                   </div>
-                                )) : (
-                                  <span className="text-[11px] text-muted-foreground/50">空文件夹</span>
-                                )}
-                              </div>
+                                );
+                              })}
                             </div>
-                          )}
-                          {tc.hasMaterialDir && (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <FolderOpen className="h-3 w-3" />
-                                报告物料文件
-                                {(tc.missingMd || tc.missingImages) && <XCircle className="h-3 w-3 text-destructive" />}
-                                {!tc.missingMd && !tc.missingImages && <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>}
-                              </div>
-                              <div className="space-y-0.5">
-                                {tc.materialFiles.length > 0 ? tc.materialFiles.map((f, fidx) => (
-                                  <div key={fidx} className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
-                                    {f.toLowerCase().endsWith('.md') ? (
-                                      <FileText className="h-3 w-3 text-orange-400" />
-                                    ) : (
+                            {tc.rawReportDirs.length > 0 ? tc.rawReportDirs.map((rd, ridx) => (
+                              <div key={ridx} className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                  <FolderOpen className="h-3 w-3 text-amber-400" />
+                                  {rd.name}
+                                  {rd.missingTemplatePng || rd.missingDescMd
+                                    ? <XCircle className="h-3 w-3 text-destructive" />
+                                    : <Badge variant="secondary" className="text-[10px] h-4 px-1">OK</Badge>}
+                                </div>
+                                <div className="pl-4 space-y-0.5">
+                                  {rd.templatePngs.length > 0 ? rd.templatePngs.map((f, fidx) => (
+                                    <div key={fidx} className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                                      <span className="text-green-500">✓</span>
                                       <Image className="h-3 w-3 text-green-400" />
-                                    )}
-                                    {f}
-                                  </div>
-                                )) : (
-                                  <span className="text-[11px] text-muted-foreground/50">空文件夹</span>
-                                )}
+                                      <span>{f}</span>
+                                    </div>
+                                  )) : (
+                                    <div className="flex items-center gap-1 text-[11px] text-destructive/60 pl-1">
+                                      <span>✗</span>
+                                      <span>缺少占位符模板图片</span>
+                                    </div>
+                                  )}
+                                  {rd.descMd ? (
+                                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                                      <span className="text-green-500">✓</span>
+                                      <FileText className="h-3 w-3 text-orange-400" />
+                                      <span>{rd.descMd}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1 text-[11px] text-destructive/60 pl-1">
+                                      <span>✗</span>
+                                      <span>缺少占位符描述文档.md</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )) : (
+                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <FolderOpen className="h-3 w-3 text-amber-400" />
+                                <span className="text-destructive/60">未找到报告目录</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 目录结构说明 */}
-            <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
-              <h4 className="text-xs font-semibold text-muted-foreground">期望的目录结构</h4>
-              <div className="font-mono text-xs text-muted-foreground space-y-0.5 leading-relaxed">
-                <div className="flex items-center gap-1.5">
-                  <Folder className="h-3.5 w-3.5 text-blue-400" />
-                  <span>顶层目录/</span>
-                </div>
-                <div className="pl-4 flex items-center gap-1.5">
-                  <Folder className="h-3.5 w-3.5 text-blue-400" />
-                  <span>测试用例1/</span>
-                </div>
-                <div className="pl-8 flex items-center gap-1.5">
-                  <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
-                  <span>原始报告文件夹/</span>
-                  <span className="text-[10px] text-destructive/70">(需包含 .json)</span>
-                </div>
-                <div className="pl-8 flex items-center gap-1.5">
-                  <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
-                  <span>报告物料文件/</span>
-                  <span className="text-[10px] text-destructive/70">(需包含 .md + 图片)</span>
+              {/* 期望的目录结构（始终展示参考） */}
+              <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
+                <h4 className="text-xs font-semibold text-muted-foreground">期望的目录结构</h4>
+                <div className="font-mono text-xs text-muted-foreground space-y-0.5 leading-relaxed">
+                  <div className="flex items-center gap-1.5">
+                    <Folder className="h-3.5 w-3.5 text-blue-400" />
+                    <span>顶层目录/</span>
+                  </div>
+                  <div className="pl-4 flex items-center gap-1.5">
+                    <Folder className="h-3.5 w-3.5 text-blue-400" />
+                    <span>测试用例名称/</span>
+                    <span className="text-[10px] text-green-600/80">→ 项目名称</span>
+                  </div>
+                  <div className="pl-8 flex items-center gap-1.5">
+                    <FileJson className="h-3.5 w-3.5 text-sky-400" />
+                    <span>样品数据.json</span>
+                    <span className="text-[10px] text-amber-600/80">(至少一个)</span>
+                  </div>
+                  <div className="pl-8 flex items-center gap-1.5">
+                    <FileJson className="h-3.5 w-3.5 text-sky-400" />
+                    <span>流程数据.json</span>
+                    <span className="text-[10px] text-muted-foreground/60">(可选)</span>
+                  </div>
+                  <div className="pl-8 flex items-center gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
+                    <span>原始报告名称1/</span>
+                    <span className="text-[10px] text-green-600/80">→ 报告名称</span>
+                  </div>
+                  <div className="pl-12 flex items-center gap-1.5">
+                    <Image className="h-3.5 w-3.5 text-green-400" />
+                    <span>占位符模板.png</span>
+                    <span className="text-[10px] text-muted-foreground/60">(可多个)</span>
+                  </div>
+                  <div className="pl-12 flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-orange-400" />
+                    <span>占位符描述文档.md</span>
+                  </div>
+                  <div className="pl-8 flex items-center gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
+                    <span>原始报告名称2/</span>
+                    <span className="text-[10px] text-green-600/80">→ 报告名称</span>
+                  </div>
+                  <div className="pl-12 flex items-center gap-1.5">
+                    <Image className="h-3.5 w-3.5 text-green-400" />
+                    <span>占位符模板.png</span>
+                  </div>
+                  <div className="pl-12 flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-orange-400" />
+                    <span>占位符描述文档.md</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setValidationDialog({ open: false, result: null })}
-          >
-            关闭
-          </Button>
+          {validationDialog.result && (() => {
+            type TC = DirectoryStructure['testCases'][number];
+            const isTCValid = (tc: TC) => {
+              if (tc.missingJson) return false;
+              if (tc.rawReportDirs.length === 0) return false;
+              return tc.rawReportDirs.every(rd => !rd.missingTemplatePng && !rd.missingDescMd);
+            };
+            const passed = validationDialog.result.testCases.filter(isTCValid);
+            const hasPassed = passed.length > 0;
+
+            /** 将通过检测的目录文件加入 validatedStructure */
+            const handleUploadPassed = () => {
+              if (!validationDialog.result || validationDialog.pendingFiles.length === 0) return;
+
+              // 构建通过检测的目录路径前缀集合
+              const passedPaths = new Set<string>();
+              passed.forEach(tc => {
+                const tcPrefix = `${validationDialog.result!.topLevelDir}/${tc.name}`;
+                // 测试用例目录本身的文件
+                passedPaths.add(tcPrefix);
+                tc.rawReportDirs.forEach(rd => {
+                  passedPaths.add(`${tcPrefix}/${rd.name}`);
+                });
+              });
+
+              // 只保留通过检测的文件
+              const passedFiles = validationDialog.pendingFiles.filter(f => {
+                const rp = (f as any).webkitRelativePath || f.name;
+                // 文件的父目录路径
+                const lastSlash = rp.lastIndexOf('/');
+                const parentPath = lastSlash > 0 ? rp.substring(0, lastSlash) : '';
+                return passedPaths.has(parentPath);
+              });
+
+              // 构建只含通过检测目录的 DirectoryStructure
+              const filteredStructure: DirectoryStructure = {
+                topLevelDir: validationDialog.result.topLevelDir,
+                testCases: passed,
+                isValid: true,
+                errors: [],
+              };
+
+              // 为物料文件生成预览
+              const previews = new Map<string, { preview?: string; previewText?: string }>();
+              passedFiles.forEach(f => {
+                const rp = (f as any).webkitRelativePath || f.name;
+                const isImg = f.type.startsWith('image/') || rp.toLowerCase().endsWith('.png') || rp.toLowerCase().endsWith('.jpg') || rp.toLowerCase().endsWith('.jpeg');
+                const isJson = f.type === 'application/json' || rp.toLowerCase().endsWith('.json');
+                const isMd = f.type === 'text/markdown' || rp.toLowerCase().endsWith('.md');
+                const entry: { preview?: string; previewText?: string } = {};
+                if (isImg) {
+                  entry.preview = URL.createObjectURL(f);
+                }
+                previews.set(rp, entry);
+                if (isJson || isMd) {
+                  f.text().then(raw => {
+                    let pretty = raw;
+                    if (isJson) {
+                      try { pretty = JSON.stringify(JSON.parse(raw), null, 2); } catch {}
+                    }
+                    const snippet = pretty.slice(0, 600);
+                    previews.set(rp, { ...previews.get(rp)!, previewText: snippet });
+                    setValidatedStructure(prev => prev ? { ...prev, previews: new Map(previews) } : prev);
+                  }).catch(() => {});
+                }
+              });
+
+              setValidatedStructure({
+                structure: filteredStructure,
+                files: passedFiles,
+                previews,
+              });
+              onFilesChange?.([...(attachments.map(a => a.file)), ...passedFiles]);
+              setValidationDialog({ open: false, result: null, pendingFiles: [] });
+            };
+
+            return hasPassed ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setValidationDialog({ open: false, result: null, pendingFiles: [] })}
+                >
+                  取消
+                </Button>
+                <Button
+                  className="bg-green-600 hover:bg-green-700"
+                  onClick={handleUploadPassed}
+                >
+                  上传通过检测目录{passed.length > 0 ? `（${passed.length} 个项目）` : ''}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setValidationDialog({ open: false, result: null, pendingFiles: [] })}
+              >
+                关闭
+              </Button>
+            );
+          })()}
         </DialogFooter>
       </DialogContent>
     </Dialog>
