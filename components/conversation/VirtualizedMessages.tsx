@@ -21,6 +21,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import React from "react";
 import { prepare, layout } from "@chenglou/pretext";
 import ImageLightbox from "./ImageLightbox";
+import { BatchImportBubble } from "./BatchImportBubble";
 
 export type Msg = {
   role: "user" | "assistant";
@@ -39,6 +40,45 @@ export type FileAttachment = {
   content: string;
   preview?: string;
 };
+
+function parseBatchImportContent(content: string): {
+  labName: string;
+  projects: {
+    name: string;
+    reports: {
+      name: string;
+      documents: {
+        fileName: string;
+        status: 'uploaded';
+        isImage?: boolean;
+      }[];
+    }[];
+  }[];
+  fileCount: number;
+} | null {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.action !== 'batch_import') return null;
+    let fileCount = 0;
+    const projects = parsed.projects.map((p: any) => ({
+      name: p.name,
+      reports: p.reports.map((r: any) => {
+        fileCount += r.documents.length;
+        return {
+          name: r.name,
+          documents: r.documents.map((d: any) => ({
+            fileName: d.fileName,
+            status: 'uploaded' as const,
+            isImage: d.contentType?.startsWith('image/'),
+          })),
+        };
+      }),
+    }));
+    return { labName: parsed.labName, projects, fileCount };
+  } catch {
+    return null;
+  }
+}
 
 const WIDTH_BUCKET_SIZE = 50;
 
@@ -732,7 +772,11 @@ export function VirtualizedMessages({
                   }`}
                 >
                   <div className="p-4 rounded-lg bg-primary text-primary-foreground relative">
-                    {searchQuery ? highlightText(message.content, searchQuery) : message.content}
+                    {(() => {
+                      const batchData = parseBatchImportContent(message.content);
+                      if (batchData) return <BatchImportBubble {...batchData} />;
+                      return searchQuery ? highlightText(message.content, searchQuery) : message.content;
+                    })()}
                     {onCreateBranch && (
                       <button
                         onClick={() => onCreateBranch(index)}
@@ -920,7 +964,11 @@ export function VirtualizedMessages({
                   }`}
                 >
                   <div className="p-4 rounded-lg bg-primary text-primary-foreground relative">
-                    {searchQuery ? highlightText(message.content, searchQuery) : message.content}
+                    {(() => {
+                      const batchData = parseBatchImportContent(message.content);
+                      if (batchData) return <BatchImportBubble {...batchData} />;
+                      return searchQuery ? highlightText(message.content, searchQuery) : message.content;
+                    })()}
                     {onCreateBranch && (
                       <button
                         onClick={() => onCreateBranch(index)}

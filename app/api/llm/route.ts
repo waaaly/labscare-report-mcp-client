@@ -6,6 +6,7 @@ import { logger} from '@/lib/logger'
 import { writeToFile } from '@/lib/logger-to-file'
 import { availableModels } from '@/lib/llm/model-config';
 import { TokenUsageInspector, TokenUsageResult } from '@/lib/llm/token-usage-inspector';
+import { isBatchImportData, parseBatchImportData, buildBatchImportPrompt } from '@/lib/llm/prompt-templates';
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // T0: 请求开始
@@ -107,6 +108,16 @@ export async function POST(request: NextRequest) {
     }
 
     inputMessages.push(new HumanMessage({ content: messageContent }));
+
+    if (isBatchImportData(prompt)) {
+      const batchData = parseBatchImportData(prompt);
+      if (batchData) {
+        inputMessages[inputMessages.length - 1] = new HumanMessage(
+          buildBatchImportPrompt(batchData)
+        );
+        logger.info('检测到批量导入任务，共 ' + batchData.projects.length + ' 个项目');
+      }
+    }
 
     const t_before_graph = Date.now();
     logger.info('3. 进入 Graph 准备时间:'+ (t_before_graph - t_receive) + ' ms');

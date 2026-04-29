@@ -257,25 +257,46 @@ export const saveScriptTool = new DynamicTool({
  */
 export const uploadDocumentTool = new DynamicTool({
   name: "upload_document",
-  description: `上传文档（PDF、Excel、图片等）到指定项目。
-支持模板图片、占位符说明文档等。
+  description: `关联文档到指定项目或报告。
+如果文件已通过 /api/documents/upload 上传，使用此工具建立 DB 关联记录。
 当用户要求"上传文档"、"上传文件"、"添加模板图片"时使用。
-注意：此工具需要文件路径参数，实际文件需要用户通过界面上传。
-参数格式：JSON字符串，包含 labId、projectId、documentType、fileName 等字段。`,
+参数格式：JSON字符串，包含 labId、projectId、reportId、name、type、url、storagePath、size 等字段。`,
   func: async (input: string) => {
     try {
       const params = JSON.parse(input);
+      if (params.url) {
+        const response = await fetch(baseUrl + "/api/documents", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documents: [{
+              projectId: params.projectId,
+              reportId: params.reportId,
+              name: params.name,
+              type: params.type || "application/octet-stream",
+              url: params.url,
+              storagePath: params.storagePath || params.url,
+              size: params.size,
+              status: params.status || "SUCCESS",
+            }]
+          }),
+        });
+        const result = await response.json();
+        const doc = Array.isArray(result) ? result[0] : result;
+        return `文档关联成功！\nID: ${doc?.id}\n文件名: ${params.name}`;
+      }
       const response = await fetch(baseUrl + `/api/labs/${params.labId}/projects/${params.projectId}/documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
       });
       const result = await response.json();
-      return `文档上传记录创建成功！\n文档ID: ${result.id}\n文件名: ${params.fileName}\n类型: ${params.documentType}`;
+      const firstResult = Array.isArray(result) ? result[0] : result;
+      return `文档上传记录创建成功！\n文档ID: ${firstResult?.id}\n文件名: ${params.fileName || params.name}\n类型: ${params.documentType || params.type}`;
     } catch (error) {
       logger.error("upload_document error:");
       logger.error(error);
-      return `创建上传记录失败: ${error}`;
+      return `文档操作失败: ${error}`;
     }
   },
 });

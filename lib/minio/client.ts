@@ -2,8 +2,11 @@ import { Client, ClientOptions } from 'minio';
 import { logger } from '../logger';
 
 export function getMinioConfig(): ClientOptions {
+  const fullEndpoint = process.env.MINIO_ENDPOINT || 'localhost:9000';
+  const [host, portStr] = fullEndpoint.split(':');
   var config: ClientOptions = {
-    endPoint: process.env.MINIO_ENDPOINT?.split(':')[0] || 'localhost',
+    endPoint: host,
+    port: portStr ? parseInt(portStr) : undefined,
     useSSL: process.env.MINIO_USE_SSL === 'true',
     accessKey: process.env.MINIO_ACCESS_KEY || 'admin',
     secretKey: process.env.MINIO_SECRET_KEY || 'admin',
