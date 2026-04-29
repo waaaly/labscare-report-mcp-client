@@ -5,6 +5,7 @@ import {
   Send,
   Copy,
   X,
+  XCircle,
   Image as ImageIcon,
   File as FileIcon,
   ChevronDown,
@@ -28,6 +29,7 @@ export type Msg = {
   content: string;
   isStreaming?: boolean;
   messageType?: "thought" | "tool_call" | "status" | "content";
+  tool?: string;
   files?: FileAttachment[];
   timestamp?: number;
   branchId?: string;
@@ -335,12 +337,32 @@ ThoughtMessage.displayName = 'ThoughtMessage';
 
 const ToolCallMessage = React.memo(
   function ToolCallMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+    const parts = content.split('\n');
+    const callText = parts[0];
+    const resultText = parts.slice(1).join('\n').trim();
+    const hasResult = !!resultText;
+
+    const isError = resultText.toLowerCase().includes('error') || resultText.includes('失败');
+
     return (
-      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <Search className="w-4 h-4 text-blue-600" />
-        <span className="text-sm text-blue-700">{content}</span>
-        {isStreaming && (
-          <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+      <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 p-3">
+          <Search className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <span className="text-sm text-blue-700 flex-1">{callText}</span>
+          {isStreaming && !hasResult && (
+            <Loader2 className="w-4 h-4 text-blue-600 animate-spin flex-shrink-0" />
+          )}
+          {hasResult && !isError && (
+            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+          )}
+          {hasResult && isError && (
+            <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          )}
+        </div>
+        {hasResult && (
+          <div className={`flex items-start gap-2 px-3 pb-3 border-t ${isError ? 'bg-red-50/50 border-blue-100' : 'bg-green-50/50 border-blue-100'}`}>
+            <span className={`text-sm ${isError ? 'text-red-600' : 'text-green-700'}`}>{resultText}</span>
+          </div>
         )}
       </div>
     );

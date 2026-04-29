@@ -28,7 +28,7 @@
   不含图片 base64，只有路径元数据和已上传的 URL/storagePath
 
 阶段4: LLM Agent 执行
-  list_labs → create_project → create_report_template → upload_document (关联模式)
+  list_labs → create_project → create_report → upload_document (关联模式)
   SSE 流式返回进度
 
 阶段5: 前端展示
@@ -134,7 +134,7 @@ ${data.projects.map((p, pi) => `
     a. create_project({ labId, name: "${p.name}" })
     b. 等待返回 { id: projectId }
 ${p.reports.map((r, ri) => 
-`    c${ri > 0 ? `+${ri}` : ''}. create_report_template({ labId, projectId, name: "${r.name}" })
+`    c${ri > 0 ? `+${ri}` : ''}. create_report({ labId, projectId, name: "${r.name}" })
        → 返回 { id: reportId_${pi}_${ri} }`
 ).join('\n')}`
 ).join('\n')}
@@ -263,5 +263,5 @@ async function uploadFileWithRetry(
 |------|------|
 | list_labs 失败 | Agent 停止执行，SSE 返回错误消息 |
 | create_project 失败 | Agent 停止执行，输出失败的项目名称 |
-| create_report_template 失败 | Agent 停止执行，输出失败的报告名称 |
+| create_report 失败 | Agent 停止执行，输出失败的报告名称 |
 | upload_document（关联）失败 | Agent 继续执行，输出失败的物料列表 |

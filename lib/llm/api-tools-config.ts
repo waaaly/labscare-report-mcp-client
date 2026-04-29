@@ -85,28 +85,28 @@ export const apiToolsConfig: ApiToolConfig[] = [
   },
 
   // ============================================
-  // 3. 报告模板管理工具
+  // 3. 报告管理工具
   // ============================================
   {
-    name: 'list_report_templates',
-    nameCn: '获取报告模板列表',
-    description: '获取指定实验室下的报告模板列表。',
+    name: 'list_reports',
+    nameCn: '获取报告列表',
+    description: '获取指定实验室下的报告列表。',
     parameters: [
       { name: 'labId', type: 'string', required: true, description: '实验室 ID' },
     ],
-    examplePrompt: '查看九江农检实验室有哪些报告模板可用？',
+    examplePrompt: '查看九江农检实验室有哪些报告可用？',
     category: 'report',
   },
   {
-    name: 'create_report_template',
-    nameCn: '创建报告模板',
-    description: '在指定实验室下创建一个新的报告模板。',
+    name: 'create_report',
+    nameCn: '创建报告',
+    description: '在指定实验室下创建一个新的报告。',
     parameters: [
       { name: 'labId', type: 'string', required: true, description: '实验室 ID' },
-      { name: 'name', type: 'string', required: true, description: '模板名称' },
+      { name: 'name', type: 'string', required: true, description: '报告名称' },
       { name: 'templateId', type: 'string', required: true, description: 'LIMS 系统模板 ID' },
     ],
-    examplePrompt: '帮我在九江农检实验室创建一个新的报告模板，模板名称是"霉菌检测报告"，模板ID是 T001',
+    examplePrompt: '帮我在九江农检实验室创建一个新的报告，报告名称是"霉菌检测报告"，模板ID是 T001',
     category: 'report',
   },
 
@@ -152,6 +152,23 @@ export const apiToolsConfig: ApiToolConfig[] = [
       { name: 'fileName', type: 'string', required: true, description: '文件名' },
     ],
     examplePrompt: '上传一份模板图片到九江农检实验室的沙门氏菌项目，文档类型是模板图片',
+    category: 'document',
+  },
+  {
+    name: 'associate_document',
+    nameCn: '关联文档到报告',
+    description: '将已在 MinIO 中的文件与指定报告建立 DB 关联记录。用于批量导入场景中文件已上传后的关联步骤。',
+    parameters: [
+      { name: 'projectId', type: 'string', required: true, description: '项目 ID' },
+      { name: 'reportId', type: 'string', required: true, description: '报告 ID' },
+      { name: 'name', type: 'string', required: true, description: '文档名称' },
+      { name: 'url', type: 'string', required: true, description: 'MinIO 中的文件 URL' },
+      { name: 'type', type: 'string', required: false, description: 'MIME 类型', example: 'application/pdf' },
+      { name: 'storagePath', type: 'string', required: false, description: '存储路径' },
+      { name: 'size', type: 'number', required: false, description: '文件大小（字节）' },
+      { name: 'status', type: 'string', required: false, description: '状态', example: 'SUCCESS' },
+    ],
+    examplePrompt: '将 MinIO 中 /documents/报告.pdf 关联到项目 P001 的报告 R001',
     category: 'document',
   },
 

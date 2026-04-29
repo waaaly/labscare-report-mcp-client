@@ -53,6 +53,7 @@ async function uploadWithRetry(
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('relativePath', relativePath);
       const res = await fetch('/api/documents/upload', {
         method: 'POST',
         body: formData,

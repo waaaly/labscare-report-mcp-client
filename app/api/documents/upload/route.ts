@@ -5,6 +5,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const relativePath = (formData.get('relativePath') as string) || file.name;
 
     if (!file) {
       return NextResponse.json(
@@ -14,12 +15,13 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const url = await uploadFile(file.name, buffer, file.type);
+    const url = await uploadFile(relativePath, buffer, file.type);
 
     return NextResponse.json({
       url,
       storagePath: url,
       fileName: file.name,
+      relativePath,
       size: file.size,
       contentType: file.type,
     });

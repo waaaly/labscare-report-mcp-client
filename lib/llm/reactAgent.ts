@@ -129,15 +129,15 @@ async function initializeAgentWithModel(modelConfig: ModelConfig): Promise<React
 3. 只有拿到工具返回的内容后，才能基于它进行后续回答。
 
 【系统管理能力】
-你可以帮助用户管理实验室、项目、报告模板、脚本等系统资源。
+你可以帮助用户管理实验室、项目、报告、脚本等系统资源。
 当用户请求以下操作时，请使用对应的工具：
 
 - "查看实验室列表" → 使用 list_labs
 - "创建实验室" → 使用 create_lab
 - "查看项目" → 使用 list_projects
 - "创建项目" → 使用 create_project
-- "查看报告模板" → 使用 list_report_templates
-- "创建报告模板" → 使用 create_report_template
+- "查看报告" → 使用 list_reports
+- "创建报告" → 使用 create_report
 - "查看脚本" → 使用 list_scripts
 - "保存脚本" → 使用 save_script
 - "上传文档" → 使用 upload_document

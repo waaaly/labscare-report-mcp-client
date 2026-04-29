@@ -33,6 +33,7 @@ interface ProjectState {
   addProject: (project: Project) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
+  removeProject: (projectId: string, labId: string) => Promise<void>;
   addDocument: (document: Document) => void;
   updateDocument: (id: string, updates: Partial<Document>) => void;
   deleteDocument: (id: string) => void;
@@ -92,6 +93,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projects: state.projects.filter((p) => p.id !== id),
       currentProject: state.currentProject?.id === id ? null : state.currentProject,
     })),
+
+  removeProject: async (projectId, labId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await fetch(`/api/labs/${labId}/projects/${projectId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to delete project');
+      }
+      get().deleteProject(projectId);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to delete project' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
   addDocument: (document) => set((state) => ({ documents: [...state.documents, document] })),
 

@@ -47,19 +47,24 @@ export async function ensureCoverBucketExists(): Promise<void> {
 }
 
 export async function uploadFile(
-  fileName: string,
+  relativePath: string,
   fileBuffer: Buffer,
   contentType: string
 ): Promise<string> {
   await ensureBucketExists();
 
-  const timestamp = Date.now();
-  const uniqueFileName = `${timestamp}-${fileName}`;
-  try {
+  const lastSlash = relativePath.lastIndexOf('/');
+  const dir = lastSlash >= 0 ? relativePath.substring(0, lastSlash) : '';
+  const baseName = lastSlash >= 0 ? relativePath.substring(lastSlash + 1) : relativePath;
 
+  const timestamp = Date.now();
+  const uniqueFileName = `${timestamp}-${baseName}`;
+  const objectKey = dir ? `${dir}/${uniqueFileName}` : uniqueFileName;
+
+  try {
     await minioClient.putObject(
       BUCKET_NAME,
-      uniqueFileName,
+      objectKey,
       fileBuffer,
       fileBuffer.length,
       { 'Content-Type': contentType }
@@ -69,7 +74,7 @@ export async function uploadFile(
     throw error;
   }
 
-  const url = `/${BUCKET_NAME}/${uniqueFileName}`;
+  const url = `/${BUCKET_NAME}/${objectKey}`;
   return url;
 }
 

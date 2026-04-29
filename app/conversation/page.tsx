@@ -14,10 +14,11 @@ interface Message {
   content: string;
   isStreaming?: boolean;
   messageType?: 'thought' | 'tool_call' | 'status' | 'content';
+  tool?: string;
   files?: FileAttachment[];
   timestamp?: number;
-  branchId?: string; // 分支 ID，用于标识消息所属的分支
-  parentId?: string; // 父消息 ID，用于构建分支结构
+  branchId?: string;
+  parentId?: string;
 }
 
 interface FileAttachment {
@@ -393,25 +394,30 @@ export default function LLMConversationPage() {
                     return newMessages;
                   });
                 } else if (json.type === 'thought' && json.text) {
-                  setMessages(prev => {
-                    const lastMsg = prev[prev.length - 1];
-                    if (lastMsg?.messageType === 'thought') {
-                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text }];
-                    } else {
-                      return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true, timestamp: Date.now() }];
-                    }
-                  });
+                  if (json.node === 'tools') {
+                    setMessages(prev => {
+                      for (let i = prev.length - 1; i >= 0; i--) {
+                        if (prev[i].messageType === 'tool_call' && prev[i].isStreaming) {
+                          const updated = [...prev];
+                          updated[i] = { ...updated[i], content: updated[i].content + '\n' + json.text, isStreaming: false };
+                          return updated;
+                        }
+                      }
+                      return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: false, timestamp: Date.now() }];
+                    });
+                  } else {
+                    setMessages(prev => [
+                      ...prev.map(msg => msg.messageType === 'thought' ? { ...msg, isStreaming: false } : msg),
+                      { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true, timestamp: Date.now() },
+                    ]);
+                  }
                   console.log(`[Client] 处理thought消息，内容: "${json.text.substring(0, 30)}..."`);
                   addLog(`Thought: ${json.text.slice(0, 50)}...`);
                 } else if (json.type === 'tool_call' && json.message) {
-                  setMessages(prev => {
-                    const lastMsg = prev[prev.length - 1];
-                    if (lastMsg?.messageType === 'tool_call') {
-                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.message }];
-                    } else {
-                      return [...prev, { role: 'assistant', content: json.message, messageType: 'tool_call', isStreaming: true, timestamp: Date.now() }];
-                    }
-                  });
+                  setMessages(prev => [
+                    ...prev,
+                    { role: 'assistant', content: json.message, messageType: 'tool_call', tool: json.tool, isStreaming: true, timestamp: Date.now() },
+                  ]);
                   console.log(`[Client] 处理tool_call消息，工具: ${json.tool}`);
                   addLog(`Tool Call: ${json.tool}`);
                 } else if (json.type === 'status' && json.text) {

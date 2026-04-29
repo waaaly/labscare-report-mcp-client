@@ -52,21 +52,21 @@ export function buildBatchImportPrompt(data: BatchImportData): string {
 
     project.reports.forEach((report, ri) => {
       const step = ri === 0 ? 'c' : `c-${ri + 1}`;
-      lines.push(`    ${step}. create_report_template({ labId, projectId, name: "${report.name}" })`);
+      lines.push(`    ${step}. create_report({ labId, projectId, name: "${report.name}" })`);
       lines.push(`       → 返回 { id: reportId_${pi}_${ri} }`);
     });
     lines.push('');
   });
 
   lines.push('步骤3：关联已上传的物料文件');
-  lines.push('  对每个报告的每个文件，调用 upload_document：');
+  lines.push('  对每个报告的每个文件，调用 associate_document 建立 DB 关联：');
   lines.push('');
 
   data.projects.forEach((project, pi) => {
     project.reports.forEach((report, ri) => {
       lines.push(`  ${project.name} / ${report.name}:`);
       report.documents.forEach((doc) => {
-        lines.push(`    upload_document({ labId, projectId, reportId: reportId_${pi}_${ri}, `);
+        lines.push(`    associate_document({ projectId, reportId: reportId_${pi}_${ri}, `);
         lines.push(`      url: "${doc.url}", storagePath: "${doc.storagePath}", `);
         lines.push(`      name: "${doc.fileName}", type: "${doc.contentType}", size: ${doc.size} })`);
       });
