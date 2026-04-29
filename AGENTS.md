@@ -23,6 +23,7 @@
 ### 做事中
 
 - [ ] 一次只做一个功能，不同时推进多个
+- [ ] 根据当前任务，查询项目根目录下.agent/ 目录下的可用 skill
 - [ ] 每次修改后运行对应的验证命令
 - [ ] 记录每一步的证据（输出、截图、日志）
 - [ ] 如果验证失败，先修基础状态再继续
@@ -73,6 +74,24 @@ npm run dev
 # 启动 Worker
 npm run worker:dev
 ```
+## 何时调用何种skill
+
+## brainstorming
+- 当需要帮助将想法转化为完整的设计和规格，调用此 skill。
+
+### vercel-react-best-practices
+当出现以下情况时，调用此 skill：
+- Writing new React components or Next.js pages
+- Implementing data fetching (client or server-side)
+- Reviewing code for performance issues
+- Refactoring existing React/Next.js code
+- Optimizing bundle size or load times
+
+### ui-ux-pro-max
+- 当任务涉及用户界面结构、视觉设计决策、交互模式或用户体验质量控制时，应该使用此技能
+
+### commit-with-readme
+-  当需要commit提交代码时，调用此 skill。
 
 ## 重要规则
 

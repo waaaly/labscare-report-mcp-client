@@ -1,26 +1,34 @@
 {
   "version": 1,
   "skills": {
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "computedHash": "f483c304fcde060211ffae00f49bb728536e7e7613c99db45b5b924d9fc17243"
+    },
+    "commit-with-readme": {
+      "source": "local",
+      "sourceType": "local",
+      "computedHash": "local-create",
+      "dependencies": [
+        "git-commit",
+        "create-readme"
+      ]
+    },
     "create-readme": {
       "source": "github/awesome-copilot",
       "sourceType": "github",
       "computedHash": "d0ece1b2164ce1376e4ab6e98d6ac079df3a2a94f5f02224362b6a1ce2516ae9"
-    },
-    "vercel-react-best-practices": {
-      "source": "vercel-labs/agent-skills",
-      "sourceType": "github",
-      "computedHash": "e218e50fe7057a4db91390e579c7db5aafac2394c31a3d8e5fa9444c8fa00726"
     },
     "git-commit": {
       "source": "github/awesome-copilot",
       "sourceType": "github",
       "computedHash": "manual-install"
     },
-    "commit-with-readme": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": "local-create",
-      "dependencies": ["git-commit", "create-readme"]
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "e218e50fe7057a4db91390e579c7db5aafac2394c31a3d8e5fa9444c8fa00726"
     }
   }
 }
