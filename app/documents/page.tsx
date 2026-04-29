@@ -1,9 +1,16 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   FileText,
   Upload,
@@ -15,55 +22,65 @@ import {
   ChevronRight,
   Trash2,
   Download,
+  Loader2,
+  SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { useLabStore } from '@/store/lab-store';
 
-type FileType = 'image' | 'json' | 'md';
-
-type DocumentFile = {
+interface ProjectSimple {
   id: string;
   name: string;
-  type: FileType;
-  size: number;
-  preview?: string;
-  previewText?: string;
-  createdAt: Date;
-};
+  limsPid: string;
+}
 
-const ITEMS_PER_PAGE = 12;
+interface DocumentItem {
+  id: string;
+  projectId: string;
+  reportId: string;
+  name: string;
+  type: string;
+  url: string;
+  size: number | null;
+  storagePath: string | null;
+  status: string;
+  pdf: string | null;
+  cover: string | null;
+  createdAt: string;
+  project: {
+    id: string;
+    name: string;
+    limsPid: string;
+  };
+  report: {
+    id: string;
+    name: string;
+  } | null;
+}
 
-const mockFiles: DocumentFile[] = [
-  { id: '1', name: 'report-2024.json', type: 'json', size: 24500, previewText: '{\n  "report": "sample data",\n  "items": []\n}', createdAt: new Date('2024-01-15') },
-  { id: '2', name: 'analysis.md', type: 'md', size: 3200, previewText: '# Analysis Report\n\nThis is a sample markdown file...', createdAt: new Date('2024-01-14') },
-  { id: '3', name: 'chart.png', type: 'image', size: 156000, preview: '/placeholder-chart.png', createdAt: new Date('2024-01-13') },
-  { id: '4', name: 'data-export.json', type: 'json', size: 8900, previewText: '{\n  "export": "data",\n  "version": "1.0"\n}', createdAt: new Date('2024-01-12') },
-  { id: '5', name: 'notes.md', type: 'md', size: 1200, previewText: '## Notes\n\n- Item 1\n- Item 2', createdAt: new Date('2024-01-11') },
-  { id: '6', name: 'screenshot.png', type: 'image', size: 89000, preview: '/placeholder-screenshot.png', createdAt: new Date('2024-01-10') },
-  { id: '7', name: 'config.json', type: 'json', size: 560, previewText: '{\n  "theme": "dark",\n  "lang": "en"\n}', createdAt: new Date('2024-01-09') },
-  { id: '8', name: 'readme.md', type: 'md', size: 4500, previewText: '# Project README\n\nDocumentation here...', createdAt: new Date('2024-01-08') },
-  { id: '9', name: 'diagram.png', type: 'image', size: 234000, preview: '/placeholder-diagram.png', createdAt: new Date('2024-01-07') },
-  { id: '10', name: 'results.json', type: 'json', size: 12300, previewText: '{\n  "results": [],\n  "total": 0\n}', createdAt: new Date('2024-01-06') },
-  { id: '11', name: 'guide.md', type: 'md', size: 6700, previewText: '# User Guide\n\nStep by step instructions...', createdAt: new Date('2024-01-05') },
-  { id: '12', name: 'banner.png', type: 'image', size: 345000, preview: '/placeholder-banner.png', createdAt: new Date('2024-01-04') },
-  { id: '13', name: 'sample.json', type: 'json', size: 2100, previewText: '{\n  "sample": true\n}', createdAt: new Date('2024-01-03') },
-  { id: '14', name: 'template.md', type: 'md', size: 890, previewText: '# Template\n\nUse this as a starting point...', createdAt: new Date('2024-01-02') },
-  { id: '15', name: 'logo.png', type: 'image', size: 45000, preview: '/placeholder-logo.png', createdAt: new Date('2024-01-01') },
-];
+interface DocumentsResponse {
+  documents: DocumentItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null || bytes === undefined) return '-';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getFileTypeIcon(type: FileType) {
-  switch (type) {
-    case 'image':
-      return ImageIcon;
-    case 'json':
-      return FileCode;
-    default:
-      return FileText;
-  }
+function getFileTypeIcon(type: string) {
+  if (type.startsWith('image/')) return ImageIcon;
+  if (type === 'application/json') return FileCode;
+  return FileText;
 }
 
 function FileCode({ className }: { className?: string }) {
@@ -86,29 +103,107 @@ function FileCode({ className }: { className?: string }) {
   );
 }
 
+function getDisplayType(type: string): string {
+  if (type.startsWith('image/')) return 'image';
+  if (type === 'application/json') return 'json';
+  if (type === 'text/markdown') return 'md';
+  if (type.includes('pdf')) return 'pdf';
+  if (type.includes('word') || type.includes('document')) return 'doc';
+  return type.split('/').pop() || type;
+}
+
 export default function DocumentsPage() {
-  const [files, setFiles] = useState<DocumentFile[]>(mockFiles);
+  const { currentLab } = useLabStore();
+
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 12, total: 0, totalPages: 0 });
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [projectNameFilter, setProjectNameFilter] = useState('');
+  const [reportNameFilter, setReportNameFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [attachments, setAttachments] = useState<{ file: File; type: FileType; preview?: string; previewText?: string }[]>([]);
+  const [attachments, setAttachments] = useState<{ file: File; type: string; preview?: string; previewText?: string }[]>([]);
+  const [projects, setProjects] = useState<ProjectSimple[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const filteredFiles = files.filter((file) =>
-    file.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const fetchDocuments = useCallback(async () => {
+    if (!currentLab?.id) return;
 
-  const totalPages = Math.ceil(filteredFiles.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedFiles = filteredFiles.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery) params.set('search', searchQuery);
+      if (projectNameFilter) params.set('projectName', projectNameFilter);
+      if (reportNameFilter) params.set('reportName', reportNameFilter);
+      if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter);
+      params.set('page', String(pagination.page));
+      params.set('pageSize', String(pagination.pageSize));
+
+      const response = await fetch(`/api/labs/${currentLab.id}/documents?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch documents');
+
+      const data: DocumentsResponse = await response.json();
+      setDocuments(data.documents);
+      setPagination(data.pagination);
+    } catch (error) {
+      console.error('Failed to fetch documents:', error);
+      toast.error('Failed to load documents');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentLab?.id, searchQuery, projectNameFilter, reportNameFilter, typeFilter, pagination.page, pagination.pageSize]);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
+
+  useEffect(() => {
+    if (currentLab?.id) {
+      fetch(`/api/labs/${currentLab.id}/projects`)
+        .then((res) => res.json())
+        .then((data) => setProjects(data))
+        .catch(() => {});
+    }
+  }, [currentLab?.id]);
+
+  const handleSearch = (value: string) => {
+    setSearchQuery(value);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const handleTypeFilterChange = (value: string) => {
+    setTypeFilter(value);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const activeFilters = [
+    searchQuery ? { key: 'search', label: `"${searchQuery}"` } : null,
+    projectNameFilter ? { key: 'projectName', label: `Project: ${projectNameFilter}` } : null,
+    reportNameFilter ? { key: 'reportName', label: `Report: ${reportNameFilter}` } : null,
+    typeFilter !== 'all' ? { key: 'type', label: `Type: ${getDisplayType(typeFilter)}` } : null,
+  ].filter(Boolean) as { key: string; label: string }[];
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setProjectNameFilter('');
+    setReportNameFilter('');
+    setTypeFilter('all');
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    setPagination((prev) => ({ ...prev, page: Math.max(1, Math.min(page, prev.totalPages)) }));
   };
 
   const addFiles = useCallback((fileList: FileList | File[]) => {
     const list = Array.from(fileList);
-    const next: { file: File; type: FileType; preview?: string; previewText?: string }[] = [];
+    const next: { file: File; type: string; preview?: string; previewText?: string }[] = [];
     const textForPreview: File[] = [];
 
     for (const f of list) {
@@ -120,7 +215,7 @@ export default function DocumentsPage() {
 
       next.push({
         file: f,
-        type: isImg ? 'image' : isJson ? 'json' : 'md',
+        type: f.type,
         preview: isImg ? URL.createObjectURL(f) : undefined,
         previewText: undefined,
       });
@@ -184,24 +279,65 @@ export default function DocumentsPage() {
     e.preventDefault();
   }, []);
 
-  const handleUpload = () => {
-    const newFiles: DocumentFile[] = attachments.map((att, idx) => ({
-      id: `new-${Date.now()}-${idx}`,
-      name: att.file.name,
-      type: att.type,
-      size: att.file.size,
-      preview: att.preview,
-      previewText: att.previewText,
-      createdAt: new Date(),
-    }));
+  const handleUpload = async () => {
+    if (!currentLab?.id) return;
+    if (attachments.length === 0) {
+      toast.error('Please select files to upload');
+      return;
+    }
+    if (!selectedProjectId) {
+      toast.error('Please select a project');
+      return;
+    }
 
-    setFiles((prev) => [...newFiles, ...prev]);
-    setAttachments([]);
-    setIsDrawerOpen(false);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      attachments.forEach((att) => {
+        formData.append('files', att.file);
+      });
+
+      const response = await fetch(
+        `/api/labs/${currentLab.id}/projects/${selectedProjectId}/documents`,
+        { method: 'POST', body: formData }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+
+      toast.success(`${attachments.length} file(s) uploaded successfully`);
+      setAttachments([]);
+      setIsDrawerOpen(false);
+      setSelectedProjectId('');
+      fetchDocuments();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const handleDeleteFile = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
+  const handleDeleteFile = async (doc: DocumentItem) => {
+    if (!currentLab?.id) return;
+    try {
+      const response = await fetch(
+        `/api/labs/${currentLab.id}/projects/${doc.projectId}/documents/${doc.id}`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) throw new Error('Delete failed');
+      toast.success('Document deleted');
+      fetchDocuments();
+    } catch (error) {
+      toast.error('Failed to delete document');
+    }
+  };
+
+  const handleDownload = (doc: DocumentItem) => {
+    if (doc.url) {
+      window.open(doc.url, '_blank');
+    }
   };
 
   const handleDrawerClose = () => {
@@ -210,7 +346,18 @@ export default function DocumentsPage() {
     });
     setAttachments([]);
     setIsDrawerOpen(false);
+    setSelectedProjectId('');
   };
+
+  if (!currentLab) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <FileText className="h-16 w-16 text-muted-foreground" />
+        <h2 className="text-2xl font-semibold">No Lab Selected</h2>
+        <p className="text-muted-foreground">Please select a lab to manage documents</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -221,84 +368,165 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="relative w-64">
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search documents..."
+              placeholder="Search by document, project or report..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="pl-10"
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-10 h-10"
             />
           </div>
-          <Button onClick={() => setIsDrawerOpen(true)}>
+
+          <Button
+            variant={isFiltersExpanded || activeFilters.length > 0 ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setIsFiltersExpanded((v) => !v)}
+            className="h-10 gap-2 shrink-0"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Filters
+            {activeFilters.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-xs size-5">
+                {activeFilters.length}
+              </span>
+            )}
+          </Button>
+
+          <Button onClick={() => setIsDrawerOpen(true)} className="h-10 shrink-0">
             <Upload className="mr-2 h-4 w-4" />
             Upload
           </Button>
         </div>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum: number;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                return (
+
+        <div
+          className={`grid gap-3 transition-all duration-200 ease-in-out overflow-hidden ${
+            isFiltersExpanded
+              ? 'grid-rows-[1fr] opacity-100'
+              : 'grid-rows-[0fr] opacity-0'
+          }`}
+        >
+          <div className="overflow-hidden">
+            <Card className="border-dashed">
+              <CardContent className="p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                      Project Name
+                    </label>
+                    <Input
+                      placeholder="e.g. Salmonella Detection"
+                      value={projectNameFilter}
+                      onChange={(e) => {
+                        setProjectNameFilter(e.target.value);
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                      className="h-9"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                      Report Name
+                    </label>
+                    <Input
+                      placeholder="e.g. Q1 Analysis"
+                      value={reportNameFilter}
+                      onChange={(e) => {
+                        setReportNameFilter(e.target.value);
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                      className="h-9"
+                    />
+                  </div>
+
+                  <div className="w-36">
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                      Document Type
+                    </label>
+                    <Select value={typeFilter} onValueChange={handleTypeFilterChange}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="image">Images</SelectItem>
+                        <SelectItem value="application/json">JSON</SelectItem>
+                        <SelectItem value="text/markdown">Markdown</SelectItem>
+                        <SelectItem value="application/pdf">PDF</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <Button
-                    key={pageNum}
-                    variant={currentPage === pageNum ? 'default' : 'outline'}
-                    size="icon"
-                    onClick={() => handlePageChange(pageNum)}
-                    className="h-8 w-8"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearFilters}
+                    className="h-9 gap-1.5 self-end"
+                    disabled={activeFilters.length === 0}
                   >
-                    {pageNum}
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Clear All
                   </Button>
-                );
-              })}
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {activeFilters.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Active:</span>
+            {activeFilters.map((f) => (
+              <Badge key={f.key} variant="secondary" className="gap-1 pl-2 pr-1 h-6 text-xs font-normal">
+                {f.label}
+                <button
+                  onClick={() => {
+                    if (f.key === 'search') {
+                      handleSearch('');
+                    } else if (f.key === 'projectName') {
+                      setProjectNameFilter('');
+                      setPagination((prev) => ({ ...prev, page: 1 }));
+                    } else if (f.key === 'reportName') {
+                      setReportNameFilter('');
+                      setPagination((prev) => ({ ...prev, page: 1 }));
+                    } else if (f.key === 'type') {
+                      handleTypeFilterChange('all');
+                    }
+                  }}
+                  className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+            <button
+              onClick={handleClearFilters}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-1"
             >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground ml-2">
-              Page {currentPage} of {totalPages}
-            </span>
+              Clear all
+            </button>
           </div>
         )}
       </div>
 
-      {paginatedFiles.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : documents.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <FileText className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold mb-2">No Documents</h3>
             <p className="text-muted-foreground text-center mb-4">
-              {searchQuery ? 'No documents match your search' : 'Upload your first document to get started'}
+              {searchQuery || projectNameFilter || reportNameFilter || typeFilter !== 'all'
+                ? 'No documents match your filters'
+                : 'Upload your first document to get started'}
             </p>
-            {!searchQuery && (
+            {!searchQuery && !projectNameFilter && !reportNameFilter && typeFilter === 'all' && (
               <Button onClick={() => setIsDrawerOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 Upload Document
@@ -309,10 +537,11 @@ export default function DocumentsPage() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {paginatedFiles.map((file) => {
-              const Icon = getFileTypeIcon(file.type);
+            {documents.map((doc) => {
+              const Icon = getFileTypeIcon(doc.type);
+              const displayType = getDisplayType(doc.type);
               return (
-                <Card key={file.id} className="group relative overflow-hidden hover:shadow-lg transition-all cursor-pointer">
+                <Card key={doc.id} className="group relative overflow-hidden hover:shadow-lg transition-all cursor-pointer">
                   <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       size="icon"
@@ -320,6 +549,7 @@ export default function DocumentsPage() {
                       className="h-7 w-7"
                       onClick={(e) => {
                         e.stopPropagation();
+                        handleDownload(doc);
                       }}
                     >
                       <Download className="h-3.5 w-3.5" />
@@ -330,43 +560,109 @@ export default function DocumentsPage() {
                       className="h-7 w-7"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteFile(file.id);
+                        handleDeleteFile(doc);
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium truncate pr-16">{file.name}</CardTitle>
+                    <CardTitle className="text-sm font-medium truncate pr-16">{doc.name}</CardTitle>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        {doc.project?.name || 'Unknown Project'}
+                      </span>
+                      {doc.report?.name && (
+                        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {doc.report.name}
+                        </span>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent className="pb-4">
-                    {file.type === 'image' ? (
+                    {doc.type.startsWith('image/') ? (
                       <div className="h-32 w-full bg-muted rounded flex items-center justify-center overflow-hidden">
-                        {file.preview ? (
-                          <img src={file.preview} alt={file.name} className="h-full w-full object-cover" />
+                        {doc.url ? (
+                          <img src={doc.url} alt={doc.name} className="h-full w-full object-cover" />
                         ) : (
                           <ImageIcon className="h-8 w-8 text-muted-foreground" />
                         )}
                       </div>
                     ) : (
                       <div className="h-32 w-full overflow-auto rounded bg-muted/60 p-2 text-xs leading-snug">
-                        <pre className="whitespace-pre-wrap text-muted-foreground">
-                          {file.previewText || 'Preview not available'}
-                        </pre>
+                        {doc.pdf ? (
+                          <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
+                            <FileText className="h-8 w-8" />
+                            <span className="text-xs">PDF Document</span>
+                          </div>
+                        ) : (
+                          <pre className="whitespace-pre-wrap text-muted-foreground">
+                            Preview not available
+                          </pre>
+                        )}
                       </div>
                     )}
                     <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
                         <Icon className="h-3.5 w-3.5" />
-                        <span className="uppercase">{file.type}</span>
+                        <span className="uppercase">{displayType}</span>
                       </div>
-                      <span>{formatFileSize(file.size)}</span>
+                      <span>{formatFileSize(doc.size)}</span>
                     </div>
                   </CardContent>
                 </Card>
               );
             })}
           </div>
+
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handlePageChange(pagination.page - 1)}
+                disabled={pagination.page === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (pagination.page <= 3) {
+                    pageNum = i + 1;
+                  } else if (pagination.page >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = pagination.page - 2 + i;
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={pagination.page === pageNum ? 'default' : 'outline'}
+                      size="icon"
+                      onClick={() => handlePageChange(pageNum)}
+                      className="h-8 w-8"
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handlePageChange(pagination.page + 1)}
+                disabled={pagination.page === pagination.totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground ml-2">
+                Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
+              </span>
+            </div>
+          )}
         </>
       )}
 
@@ -396,6 +692,22 @@ export default function DocumentsPage() {
               className="hidden"
               onChange={handleFileChange}
             />
+
+            <div className="mb-4">
+              <label className="text-sm font-medium mb-1.5 block">Target Project</label>
+              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a project..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({p.limsPid})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {attachments.length === 0 ? (
               <div
@@ -427,7 +739,7 @@ export default function DocumentsPage() {
                         <CardTitle className="text-xs font-medium truncate">{att.file.name}</CardTitle>
                       </CardHeader>
                       <CardContent className="pb-2">
-                        {att.type === 'image' ? (
+                        {att.type.startsWith('image/') ? (
                           att.preview ? (
                             <img src={att.preview} alt={att.file.name} className="h-24 w-full object-cover rounded" />
                           ) : (
@@ -464,7 +776,12 @@ export default function DocumentsPage() {
                     <Button variant="outline" onClick={handleDrawerClose}>
                       Cancel
                     </Button>
-                    <Button onClick={handleUpload}>
+                    <Button onClick={handleUpload} disabled={isUploading}>
+                      {isUploading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="mr-2 h-4 w-4" />
+                      )}
                       Upload {attachments.length} file{attachments.length !== 1 ? 's' : ''}
                     </Button>
                   </div>
