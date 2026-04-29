@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { MessageRole, Message, Conversation } from '@prisma/client';
 import { logger } from '@/lib/logger';
 
@@ -76,7 +76,7 @@ export class ContextStore {
       logger.info(`[ContextStore] 创建对话: ${conversation.id}`);
       return conversation;
     } catch (error) {
-      logger.error('[ContextStore] 创建对话失败:', error);
+      logger.error({ error }, '[ContextStore] 创建对话失败');
       throw error;
     }
   }
@@ -95,7 +95,7 @@ export class ContextStore {
         },
       });
     } catch (error) {
-      logger.error(`[ContextStore] 获取对话失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 获取对话失败: ${conversationId}`);
       throw error;
     }
   }
@@ -122,7 +122,7 @@ export class ContextStore {
         data,
       });
     } catch (error) {
-      logger.error(`[ContextStore] 更新对话失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 更新对话失败: ${conversationId}`);
       throw error;
     }
   }
@@ -137,7 +137,7 @@ export class ContextStore {
       });
       logger.info(`[ContextStore] 删除对话: ${conversationId}`);
     } catch (error) {
-      logger.error(`[ContextStore] 删除对话失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 删除对话失败: ${conversationId}`);
       throw error;
     }
   }
@@ -155,7 +155,7 @@ export class ContextStore {
         take: limit,
       });
     } catch (error) {
-      logger.error('[ContextStore] 列出对话失败:', error);
+      logger.error({ error }, '[ContextStore] 列出对话失败');
       throw error;
     }
   }
@@ -187,10 +187,10 @@ export class ContextStore {
           toolOutput: params.toolOutput,
           inputTokens: params.inputTokens,
           outputTokens: params.outputTokens,
-          attachments: params.attachments || [],
+          attachments: params.attachments as any,
           metadata: params.metadata || {},
           sequence: count,
-        },
+        } as any,
       });
 
       // 更新对话统计
@@ -199,7 +199,7 @@ export class ContextStore {
       logger.info(`[ContextStore] 添加消息: ${message.id} 到对话: ${conversationId}`);
       return message;
     } catch (error) {
-      logger.error(`[ContextStore] 添加消息失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 添加消息失败: ${conversationId}`);
       throw error;
     }
   }
@@ -233,10 +233,10 @@ export class ContextStore {
             toolOutput: params.toolOutput,
             inputTokens: params.inputTokens,
             outputTokens: params.outputTokens,
-            attachments: params.attachments || [],
+            attachments: params.attachments as any,
             metadata: params.metadata || {},
             sequence: count + i,
-          },
+          } as any,
         });
         createdMessages.push(message);
       }
@@ -247,7 +247,7 @@ export class ContextStore {
       logger.info(`[ContextStore] 批量添加 ${messages.length} 条消息到对话: ${conversationId}`);
       return createdMessages;
     } catch (error) {
-      logger.error(`[ContextStore] 批量添加消息失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 批量添加消息失败: ${conversationId}`);
       throw error;
     }
   }
@@ -269,7 +269,7 @@ export class ContextStore {
         take: limit,
       });
     } catch (error) {
-      logger.error(`[ContextStore] 获取消息失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 获取消息失败: ${conversationId}`);
       throw error;
     }
   }
@@ -291,7 +291,7 @@ export class ContextStore {
       // 返回按 sequence 升序排列的消息
       return messages.reverse();
     } catch (error) {
-      logger.error(`[ContextStore] 获取最近消息失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 获取最近消息失败: ${conversationId}`);
       throw error;
     }
   }
@@ -310,7 +310,7 @@ export class ContextStore {
       
       logger.info(`[ContextStore] 删除消息: ${messageId}`);
     } catch (error) {
-      logger.error(`[ContextStore] 删除消息失败: ${messageId}`, error);
+      logger.error({ error }, `[ContextStore] 删除消息失败: ${messageId}`);
       throw error;
     }
   }
@@ -337,7 +337,7 @@ export class ContextStore {
       
       logger.info(`[ContextStore] 清空对话消息: ${conversationId}`);
     } catch (error) {
-      logger.error(`[ContextStore] 清空消息失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 清空消息失败: ${conversationId}`);
       throw error;
     }
   }
@@ -373,7 +373,7 @@ export class ContextStore {
         },
       });
     } catch (error) {
-      logger.error(`[ContextStore] 更新统计失败: ${conversationId}`, error);
+      logger.error({ error }, `[ContextStore] 更新统计失败: ${conversationId}`);
     }
   }
 
@@ -399,7 +399,7 @@ export class ContextStore {
       // 更新对话统计
       await this.updateConversationStats(message.conversationId);
     } catch (error) {
-      logger.error(`[ContextStore] 更新 Token 失败: ${messageId}`, error);
+      logger.error({ error }, `[ContextStore] 更新 Token 失败: ${messageId}`);
       throw error;
     }
   }

@@ -45,7 +45,7 @@ export class ContextChatMessageHistory extends BaseChatMessageHistory {
       
       return baseMessages;
     } catch (error) {
-      logger.error(`[ContextChatMessageHistory] 获取消息失败: ${this.conversationId}`, error);
+      logger.error({ error }, `[ContextChatMessageHistory] 获取消息失败: ${this.conversationId}`);
       return [];
     }
   }
@@ -65,7 +65,21 @@ export class ContextChatMessageHistory extends BaseChatMessageHistory {
   }
 
   /**
-   * 添加 AI 消息
+   * 添加 AI 消息（LangChain 基类要求的方法）
+   */
+  async addAIMessage(message: string | BaseMessage): Promise<void> {
+    const content = typeof message === 'string' ? message : message.content.toString();
+    
+    await contextManager.addAssistantMessage(this.conversationId, content);
+    
+    // 使缓存失效
+    this.invalidateCache();
+    
+    logger.info(`[ContextChatMessageHistory] 添加 AI 消息到对话: ${this.conversationId}`);
+  }
+
+  /**
+   * 添加 AI 消息（带元数据）
    */
   async addAIChatMessage(message: string | BaseMessage, metadata?: Record<string, any>): Promise<void> {
     const content = typeof message === 'string' ? message : message.content.toString();

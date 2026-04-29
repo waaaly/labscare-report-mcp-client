@@ -27,7 +27,7 @@ export async function GET(
       data: messages,
     });
   } catch (error) {
-    logger.error(`[Messages API] 获取消息失败: ${params.id}`, error);
+    logger.error({ error }, `[Messages API] 获取消息失败: ${params.id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch messages' },
       { status: 500 }
@@ -62,7 +62,7 @@ export async function POST(
       data: message,
     });
   } catch (error) {
-    logger.error(`[Messages API] 添加消息失败: ${params.id}`, error);
+    logger.error({ error }, `[Messages API] 添加消息失败: ${params.id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to add message' },
       { status: 500 }
@@ -87,7 +87,7 @@ export async function DELETE(
       message: 'Messages cleared successfully',
     });
   } catch (error) {
-    logger.error(`[Messages API] 清空消息失败: ${params.id}`, error);
+    logger.error({ error }, `[Messages API] 清空消息失败: ${params.id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to clear messages' },
       { status: 500 }

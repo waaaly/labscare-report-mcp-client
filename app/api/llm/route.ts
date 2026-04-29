@@ -318,7 +318,7 @@ export async function POST(request: NextRequest) {
               );
               logger.info(`[Context] 更新消息 Token 使用量: ${assistantMessageId}`);
             } catch (error) {
-              logger.error(`[Context] 更新 Token 使用量失败:`, error);
+              logger.error({ error }, `[Context] 更新 Token 使用量失败`);
             }
           }
 
@@ -353,7 +353,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    logger.error({ error},'LLM API error:');
+    logger.error({ error }, 'LLM API error:');
     return NextResponse.json(
       { error: 'Failed to process LLM request' },
       { status: 500 }

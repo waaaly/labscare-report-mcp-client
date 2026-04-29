@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       data: conversations,
     });
   } catch (error) {
-    logger.error('[Conversations API] 获取对话列表失败:', error);
+    logger.error({ error }, '[Conversations API] 获取对话列表失败');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch conversations' },
       { status: 500 }
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, model, labId, projectId, reportId, metadata } = body;
+    const { title, model, labId, projectId, reportId } = body;
 
     const conversationId = await contextManager.createConversation({
       title,
@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
       labId,
       projectId,
       reportId,
-      metadata,
     });
 
     return NextResponse.json({
@@ -51,7 +50,7 @@ export async function POST(request: NextRequest) {
       data: { id: conversationId },
     });
   } catch (error) {
-    logger.error('[Conversations API] 创建对话失败:', error);
+    logger.error({ error }, '[Conversations API] 创建对话失败');
     return NextResponse.json(
       { success: false, error: 'Failed to create conversation' },
       { status: 500 }

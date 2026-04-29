@@ -62,6 +62,28 @@ export class ContextManager {
   }
 
   /**
+   * 更新对话
+   */
+  async updateConversation(
+    conversationId: string,
+    params: {
+      title?: string;
+      model?: string;
+      labId?: string | null;
+      projectId?: string | null;
+      reportId?: string | null;
+    }
+  ): Promise<void> {
+    await contextStore.updateConversation(conversationId, {
+      title: params.title,
+      model: params.model,
+      labId: params.labId,
+      projectId: params.projectId,
+      reportId: params.reportId,
+    });
+  }
+
+  /**
    * 添加用户消息
    */
   async addUserMessage(
@@ -320,7 +342,7 @@ export class ContextManager {
 
     // 如果有附件，添加到内容中
     if (msg.attachments && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
-      const attachments = msg.attachments as MessageAttachment[];
+      const attachments = msg.attachments as unknown as MessageAttachment[];
       const attachmentInfo = attachments
         .map((att) => `[附件: ${att.name} (${att.type})]`)
         .join('\n');
