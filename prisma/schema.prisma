@@ -25,6 +25,13 @@ enum DocStatus {
   FAILED
 }
 
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -169,4 +176,73 @@ model TaskLog {
 
   @@index([taskId, timestamp])
   @@map("task_logs")
+}
+
+// ========== 对话上下文系统 ==========
+
+model Conversation {
+  id          String   @id @default(cuid())
+  title       String   @default("新对话")
+  model       String   @default("gpt-4o") // 使用的模型
+  
+  // 系统状态（可选关联）
+  labId       String?  @map("lab_id")
+  projectId   String?  @map("project_id")
+  reportId    String?  @map("report_id")
+  
+  // Token 统计
+  totalInputTokens   Int      @default(0) @map("total_input_tokens")
+  totalOutputTokens  Int      @default(0) @map("total_output_tokens")
+  totalTokens        Int      @default(0) @map("total_tokens")
+  messageCount       Int      @default(0) @map("message_count")
+  
+  // 元数据
+  metadata    Json?    @default("{}") // 存储额外配置、用户偏好等
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // 关联
+  messages    Message[]
+  
+  @@index([createdAt])
+  @@map("conversations")
+}
+
+model Message {
+  id              String      @id @default(cuid())
+  conversationId  String      @map("conversation_id")
+  role            MessageRole
+  
+  // 内容（文本或结构化内容）
+  content         String      @db.Text
+  contentType     String      @default("text") @map("content_type") // text, image, json, mixed
+  
+  // 消息类型标记
+  messageType     String?     @map("message_type") // thought, tool_call, status, content
+  toolName        String?     @map("tool_name")    // 如果是工具调用
+  toolInput       Json?       @map("tool_input")   // 工具输入参数
+  toolOutput      Json?       @map("tool_output")  // 工具输出结果
+  
+  // Token 使用（单条消息）
+  inputTokens     Int?        @map("input_tokens")
+  outputTokens    Int?        @map("output_tokens")
+  
+  // 文件附件（存储引用）
+  attachments     Json?       @default("[]") // [{name, type, url, size}]
+  
+  // 元数据
+  metadata        Json?       @default("{}") // 额外信息如生成时间、模型版本等
+  
+  // 排序
+  sequence        Int         @default(0)
+  
+  createdAt       DateTime    @default(now()) @map("created_at")
+  
+  // 关联
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId, sequence])
+  @@index([createdAt])
+  @@map("messages")
 }

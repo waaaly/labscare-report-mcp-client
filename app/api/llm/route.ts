@@ -7,22 +7,44 @@ import { writeToFile } from '@/lib/logger-to-file'
 import { availableModels } from '@/lib/llm/model-config';
 import { TokenUsageInspector, TokenUsageResult } from '@/lib/llm/token-usage-inspector';
 import { isBatchImportData, parseBatchImportData, buildBatchImportPrompt } from '@/lib/llm/prompt-templates';
+import { contextManager } from '@/lib/llm/context-manager';
+import { MessageAttachment } from '@/lib/llm/context-store';
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // T0: 请求开始
     let firstTokenTime: number | null = null; // T1: 首字时间
     const t_receive = Date.now();
     logger.info('1. 收到请求:'+t_receive);
+    
     // 1) 解析 FormData
     const t_before_form = Date.now();
     const formData = await request.formData();
     logger.info('2. FormData 解析耗时:'+ (Date.now() - t_before_form) + ' ms');
+    
     const prompt = (formData.get('prompt') as string) || '';
     const contextJson = (formData.get('contextJson') as string) || '';
     const messagesJson = (formData.get('messagesJson') as string) || null;
     const model = (formData.get('model') as string) || 'gpt-4o';
     const files = (formData.getAll('files') as File[]) || [];
+    const conversationId = (formData.get('conversationId') as string) || null;
 
+    // ========== 上下文系统集成 ==========
+    let currentConversationId = conversationId;
+    
+    // 如果没有提供 conversationId，创建新对话
+    if (!currentConversationId) {
+      const contextData = contextJson ? JSON.parse(contextJson) : {};
+      currentConversationId = await contextManager.createConversation({
+        title: prompt.slice(0, 50) || '新对话',
+        model,
+        labId: contextData.labId,
+        projectId: contextData.projectId,
+        reportId: contextData.reportId,
+      });
+      logger.info(`[Context] 创建新对话: ${currentConversationId}`);
+    }
+
+    // 构建用户消息内容
     let userText = prompt || '';
     if (contextJson) {
       userText += `\n\n[Context]\n\`\`\`json\n${contextJson}\n\`\`\`\n`;
@@ -35,18 +57,27 @@ export async function POST(request: NextRequest) {
       content: string;
       dataUrl?: string;
     }> = [];
+    
+    // 文件附件数组（用于存储到数据库）
+    const messageAttachments: MessageAttachment[] = [];
 
     for (const file of files) {
       if (file.type?.startsWith('image/')) {
         const buffer = Buffer.from(await file.arrayBuffer());
         const dataUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
         userText += `\n\n[图片文件: ${file.name}] (已作为视觉输入上传)\n`;
-        // 存储处理结果，避免重复读取
         processedFiles.push({
           file,
           type: 'image',
           content: '',
           dataUrl
+        });
+        // 添加到附件列表
+        messageAttachments.push({
+          name: file.name,
+          type: 'image',
+          content: dataUrl,
+          size: file.size,
         });
       } else if (file.name?.toLowerCase().endsWith('.md') || file.type === 'text/markdown') {
         const mdText = await file.text();
@@ -56,6 +87,12 @@ export async function POST(request: NextRequest) {
           type: 'md',
           content: mdText
         });
+        messageAttachments.push({
+          name: file.name,
+          type: 'md',
+          content: mdText,
+          size: file.size,
+        });
       } else if (file.type === 'application/json' || file.name?.toLowerCase().endsWith('.json')) {
         const jsonText = await file.text();
         userText += `\n\n[JSON: ${file.name}]\n\`\`\`json\n${jsonText}\n\`\`\`\n`;
@@ -64,8 +101,25 @@ export async function POST(request: NextRequest) {
           type: 'json',
           content: jsonText
         });
+        messageAttachments.push({
+          name: file.name,
+          type: 'json',
+          content: jsonText,
+          size: file.size,
+        });
       }
     }
+
+    // 保存用户消息到数据库
+    const userMessageId = await contextManager.addUserMessage(
+      currentConversationId,
+      userText.trim(),
+      {
+        attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
+        metadata: { hasFiles: files.length > 0, fileCount: files.length },
+      }
+    );
+    logger.info(`[Context] 保存用户消息: ${userMessageId}`);
 
     const messageContent: any[] = [{ type: 'text', text: userText.trim() }];
     // 🔧 优化2：使用已处理的文件，避免重复读取
@@ -78,35 +132,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 🔧 优化3：直接构建最终数组，避免中间处理
+    // 🔧 优化3：使用上下文系统获取历史消息
     const inputMessages: Array<HumanMessage | AIMessage> = [];
-
-    if (messagesJson) {
-      try {
-        const arr = JSON.parse(messagesJson as string) as Array<{ role: 'user' | 'assistant'; content: string }>;
-        if (Array.isArray(arr)) {
-          // 🔧 优化4：只处理最后10条消息，避免处理无用消息
-          const recentMessages = arr.slice(-10);
-          for (const m of recentMessages) {
-            // 🔧 优化5：合并正则替换，减少正则执行次数
-            let cleanContent = (m.content ?? '')
-              .replace(/(\[状态\]|正在调用工具:).*?\n?/g, '') // 合并两个模式
-              .trim();
-
-            if (!cleanContent) continue; // 如果清洗后为空，不加入上下文
-
-            if (m?.role === 'user') {
-              inputMessages.push(new HumanMessage(cleanContent));
-            } else if (m?.role === 'assistant') {
-              inputMessages.push(new AIMessage(cleanContent));
-            }
-          }
-        }
-      } catch (e) {
-        logger.error("解析消息历史失败:"+ e);
+    
+    // 从数据库获取历史消息（分层存储策略）
+    const historyMessages = await contextManager.getContextForLLM(currentConversationId);
+    
+    // 转换为 LangChain 消息格式
+    for (const msg of historyMessages) {
+      if (msg.role === 'user') {
+        inputMessages.push(new HumanMessage(msg.content));
+      } else if (msg.role === 'assistant') {
+        inputMessages.push(new AIMessage(msg.content));
       }
     }
 
+    // 添加当前用户消息
     inputMessages.push(new HumanMessage({ content: messageContent }));
 
     if (isBatchImportData(prompt)) {
@@ -123,7 +164,7 @@ export async function POST(request: NextRequest) {
     logger.info('3. 进入 Graph 准备时间:'+ (t_before_graph - t_receive) + ' ms');
     logger.info('4. 输入消息:'+ inputMessages.length);
     logger.info('5. 文件处理优化:'+ processedFiles.length + ' 个文件，避免重复读取');
-    logger.info('6. 消息处理优化:'+ (messagesJson ? '只处理最后10条消息' : '无消息历史'));
+    logger.info('6. 上下文系统:'+ (historyMessages.length > 0 ? `从历史加载 ${historyMessages.length} 条消息` : '新对话'));
 
     // 创建 Token 使用量回调处理器
     const tokenInspector = new TokenUsageInspector();
@@ -136,6 +177,10 @@ export async function POST(request: NextRequest) {
     const streamStart = Date.now();
     logger.info('Graph 开始执行:'+ (streamStart - startTime) + ' ms');
 
+    // 用于累积助手回复内容
+    let assistantContent = '';
+    let assistantMessageId: string | null = null;
+    
     const runtimeStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -201,6 +246,9 @@ export async function POST(request: NextRequest) {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "metrics", ttft: firstTokenTime - startTime })}\n\n`));
                   }
 
+                  // 累积助手回复内容
+                  assistantContent += messageChunk.content;
+
                   // 判断消息类型：工具节点的内容作为thought，其他作为content
                   const messageType = currentNode === "tools" ? "thought" : "content";
 
@@ -237,6 +285,18 @@ export async function POST(request: NextRequest) {
           // 这里我们只是记录一下聚合的消息数量，实际聚合逻辑可以根据需要实现
           logger.info(`共接收 ${messageChunks.length} 个消息 chunk`);
           
+          // 保存助手回复到数据库
+          if (assistantContent.trim()) {
+            assistantMessageId = await contextManager.addAssistantMessage(
+              currentConversationId,
+              assistantContent.trim(),
+              {
+                messageType: 'content',
+              }
+            );
+            logger.info(`[Context] 保存助手消息: ${assistantMessageId}`);
+          }
+          
         } catch (err) {
           logger.error("Stream Error:"+ err);
         } finally {
@@ -248,6 +308,20 @@ export async function POST(request: NextRequest) {
           const tokenUsage = tokenInspector.getTokenUsage();
           logger.info('[TokenUsage] 最终使用量: ' + JSON.stringify(tokenUsage));
 
+          // 更新消息的 Token 使用量
+          if (assistantMessageId && tokenUsage) {
+            try {
+              await contextManager.updateMessageTokens(
+                assistantMessageId,
+                tokenUsage.promptTokens || 0,
+                tokenUsage.completionTokens || 0
+              );
+              logger.info(`[Context] 更新消息 Token 使用量: ${assistantMessageId}`);
+            } catch (error) {
+              logger.error(`[Context] 更新 Token 使用量失败:`, error);
+            }
+          }
+
           // 发送结束指标（包含 token 使用量）
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: "metrics",
@@ -257,7 +331,8 @@ export async function POST(request: NextRequest) {
               inputTokens: tokenUsage.promptTokens || 0,
               outputTokens: tokenUsage.completionTokens || 0,
               totalTokens: tokenUsage.totalTokens || 0,
-            }
+            },
+            conversation_id: currentConversationId,
           })}\n\n`));
           
           // 记录：优先使用模型商返回的 usage 字段，而非手动计数
@@ -273,7 +348,8 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',         // 禁用缓存，防止流被拦截
         'Connection': 'keep-alive',          // 保持长连接
-        'Server-Timing': `pre;desc="Pre-processing";dur=${Date.now() - startTime}`
+        'Server-Timing': `pre;desc="Pre-processing";dur=${Date.now() - startTime}`,
+        'X-Conversation-Id': currentConversationId, // 返回对话 ID
       },
     });
   } catch (error) {
