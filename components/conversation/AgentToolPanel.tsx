@@ -58,6 +58,8 @@ type Props = {
     id: string;
     name: string;
     description?: string;
+    maxInputTokens?: number;
+    maxOutputTokens?: number;
   }>;
   availableTools?: Array<{
     id: string;
@@ -72,6 +74,10 @@ type Props = {
     outputTokens: number;
     totalTokens: number;
   }>;
+  modelContextLimits?: {
+    maxInputTokens: number;
+    maxOutputTokens: number;
+  };
 };
 
 const defaultModels = [
@@ -99,11 +105,11 @@ export default function AgentToolPanel({
   availableModels,
   availableTools,
   usageHistory = [],
+  modelContextLimits,
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(true);
   const models = availableModels || defaultModels;
   const tools = availableTools || defaultTools;
-
   const handleModelChange = (value: string) => {
     onModelChange?.(value);
   };
@@ -277,8 +283,104 @@ export default function AgentToolPanel({
                   </Badge>
                 </div>
 
+                {/* 上下文窗口可视化 */}
+                {modelContextLimits && (modelContextLimits.maxInputTokens > 0 || modelContextLimits.maxOutputTokens > 0) && (
+                  <div className="space-y-3">
+                    <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <Activity className="h-3 w-3" />
+                      上下文窗口使用情况
+                    </div>
+
+                    {/* 输入上下文 */}
+                    <div className="bg-gradient-to-r from-blue-500/5 to-cyan-500/5 rounded-lg p-3 border border-blue-500/20">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span className="text-xs font-medium">输入上下文</span>
+                        </div>
+                        <div className="text-xs font-mono">
+                          <span className="text-blue-400 font-medium">
+                            {formatTokenCount(conversationUsage?.inputTokens || 0)}
+                          </span>
+                          <span className="text-muted-foreground"> / {formatTokenCount(modelContextLimits.maxInputTokens)}</span>
+                        </div>
+                      </div>
+                      <div className="h-3 bg-slate-700/50 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500 relative"
+                          style={{
+                            width: `${Math.min(100, ((conversationUsage?.inputTokens || 0) / modelContextLimits.maxInputTokens) * 100)}%`,
+                          }}
+                        >
+                          {((conversationUsage?.inputTokens || 0) / modelContextLimits.maxInputTokens) > 0.8 && (
+                            <div className="absolute inset-0 animate-pulse bg-white/20 rounded-full" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                        <span>已使用 {((conversationUsage?.inputTokens || 0) / modelContextLimits.maxInputTokens * 100).toFixed(1)}%</span>
+                        <span>剩余 {formatTokenCount(Math.max(0, modelContextLimits.maxInputTokens - (conversationUsage?.inputTokens || 0)))}</span>
+                      </div>
+                    </div>
+
+                    {/* 输出上下文 */}
+                    <div className="bg-gradient-to-r from-green-500/5 to-emerald-500/5 rounded-lg p-3 border border-green-500/20">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-green-500" />
+                          <span className="text-xs font-medium">输出上下文</span>
+                        </div>
+                        <div className="text-xs font-mono">
+                          <span className="text-green-400 font-medium">
+                            {formatTokenCount(conversationUsage?.outputTokens || 0)}
+                          </span>
+                          <span className="text-muted-foreground"> / {formatTokenCount(modelContextLimits.maxOutputTokens)}</span>
+                        </div>
+                      </div>
+                      <div className="h-3 bg-slate-700/50 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500 relative"
+                          style={{
+                            width: `${Math.min(100, ((conversationUsage?.outputTokens || 0) / modelContextLimits.maxOutputTokens) * 100)}%`,
+                          }}
+                        >
+                          {((conversationUsage?.outputTokens || 0) / modelContextLimits.maxOutputTokens) > 0.8 && (
+                            <div className="absolute inset-0 animate-pulse bg-white/20 rounded-full" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                        <span>已使用 {((conversationUsage?.outputTokens || 0) / modelContextLimits.maxOutputTokens * 100).toFixed(1)}%</span>
+                        <span>剩余 {formatTokenCount(Math.max(0, modelContextLimits.maxOutputTokens - (conversationUsage?.outputTokens || 0)))}</span>
+                      </div>
+                    </div>
+
+                    {/* 总体概览 */}
+                    {/* <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/50">
+                      <div className="grid grid-cols-2 gap-3 text-center">
+                        <div>
+                          <div className="text-lg font-bold text-blue-400">
+                            {formatTokenCount(modelContextLimits.maxInputTokens)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">最大输入</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-green-400">
+                            {formatTokenCount(modelContextLimits.maxOutputTokens)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">最大输出</div>
+                        </div>
+                      </div>
+                    </div> */}
+                  </div>
+                )}
+
                 {usageHistory.length > 0 ? (
                   <div className="space-y-4">
+                    <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <Activity className="h-3 w-3" />
+                      历史token使用情况
+                    </div>
                     {/* 列表：每次提问的 token 消耗 */}
                     <div className="space-y-2">
                       {usageHistory.map((item, idx) => (

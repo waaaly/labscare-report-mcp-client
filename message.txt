@@ -1,0 +1,974 @@
+data: {"type":"tool_call","tool":"list_labs","message":"正在准备调用: list_labs...","node":"model_request"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"data\":[{\"id\":\"cmo88ydvh0000s4e9fdudrvgn\",\"name\":\"嘉必优\",\"domain\":\"http://192.168.3.6/\",\"token\":\"a8e3d5cf0d39444a87e8f38b5e56bc61\",\"version\":\"1.0.0\",\"createdAt\":\"2026-04-21T06:32:36.796Z\",\"updatedAt\":\"2026-04-21T06:32:36.796Z\"},{\"id\":\"cmnzfjncw0000hrfpsuvua6q1\",\"name\":\"Demo Lab\",\"domain\":\"clinical\",\"token\":\"demo-token-12345\",\"version\":\"1.0.0\",\"createdAt\":\"2026-04-15T02:27:10.976Z\",\"updatedAt\":\"2026-04-15T02:27:10.976Z\"}]}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_call","tool":"create_project","message":"正在准备调用: create_project...","node":"model_request"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"项目创建成功\",\"data\":{\"id\":\"cmol6j3tw000kg35rw5on0fsq\",\"name\":\"20260312-001-test\",\"limsPid\":\"20260312-001-test\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"tool_call","tool":"create_report","message":"正在准备调用: create_report...","node":"model_request"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jf38000mg35rtnn97hm0\",\"name\":\"CABIO-16 油脂总汞检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jfa4000og35rwkfbqjp1\",\"name\":\"CABIO-10  油脂过氧化值检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jfda000qg35ru42qzcya\",\"name\":\"CABIO-12  油脂反式脂肪酸检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jfh2000sg35r06gpi14h\",\"name\":\"CABIO-17 油脂磷检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jfnt000ug35rvne0xhuq\",\"name\":\"CABIO-18 油脂3-MCPD GLY检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jfnw000wg35rk5zfd7od\",\"name\":\"CC毛油溶剂残留检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"tool_result","text":"{\"success\":true,\"message\":\"报告创建成功\",\"data\":{\"id\":\"cmol6jfr2000yg35rctvvwpfz\",\"name\":\"CABIO-19 油脂塑化剂检测原始记录\"}}","node":"tools"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"metrics","ttft":56429}
+
+data: {"type":"content","text":"已","node":"model_request"}
+
+data: {"type":"content","text":"按","node":"model_request"}
+
+data: {"type":"content","text":"你","node":"model_request"}
+
+data: {"type":"content","text":"要求","node":"model_request"}
+
+data: {"type":"content","text":"执行","node":"model_request"}
+
+data: {"type":"content","text":"并","node":"model_request"}
+
+data: {"type":"content","text":"汇","node":"model_request"}
+
+data: {"type":"content","text":"报","node":"model_request"}
+
+data: {"type":"content","text":"如下","node":"model_request"}
+
+data: {"type":"content","text":"：\n\n","node":"model_request"}
+
+data: {"type":"content","text":"###","node":"model_request"}
+
+data: {"type":"content","text":" 步","node":"model_request"}
+
+data: {"type":"content","text":"骤","node":"model_request"}
+
+data: {"type":"content","text":"1","node":"model_request"}
+
+data: {"type":"content","text":"：","node":"model_request"}
+
+data: {"type":"content","text":"验证","node":"model_request"}
+
+data: {"type":"content","text":"实验","node":"model_request"}
+
+data: {"type":"content","text":"室","node":"model_request"}
+
+data: {"type":"content","text":" ✅","node":"model_request"}
+
+data: {"type":"content","text":"\n","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":" 已","node":"model_request"}
+
+data: {"type":"content","text":"调用","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"list","node":"model_request"}
+
+data: {"type":"content","text":"_l","node":"model_request"}
+
+data: {"type":"content","text":"abs","node":"model_request"}
+
+data: {"type":"content","text":"`\n","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":" 找","node":"model_request"}
+
+data: {"type":"content","text":"到","node":"model_request"}
+
+data: {"type":"content","text":"实验","node":"model_request"}
+
+data: {"type":"content","text":"室","node":"model_request"}
+
+data: {"type":"content","text":" **","node":"model_request"}
+
+data: {"type":"content","text":"嘉","node":"model_request"}
+
+data: {"type":"content","text":"必","node":"model_request"}
+
+data: {"type":"content","text":"优","node":"model_request"}
+
+data: {"type":"content","text":"**\n","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"lab","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" c","node":"model_request"}
+
+data: {"type":"content","text":"mo","node":"model_request"}
+
+data: {"type":"content","text":"88","node":"model_request"}
+
+data: {"type":"content","text":"yd","node":"model_request"}
+
+data: {"type":"content","text":"vh","node":"model_request"}
+
+data: {"type":"content","text":"000","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"s","node":"model_request"}
+
+data: {"type":"content","text":"4","node":"model_request"}
+
+data: {"type":"content","text":"e","node":"model_request"}
+
+data: {"type":"content","text":"9","node":"model_request"}
+
+data: {"type":"content","text":"fd","node":"model_request"}
+
+data: {"type":"content","text":"ud","node":"model_request"}
+
+data: {"type":"content","text":"rv","node":"model_request"}
+
+data: {"type":"content","text":"gn","node":"model_request"}
+
+data: {"type":"content","text":"`\n\n","node":"model_request"}
+
+data: {"type":"content","text":"---\n\n","node":"model_request"}
+
+data: {"type":"content","text":"###","node":"model_request"}
+
+data: {"type":"content","text":" 步","node":"model_request"}
+
+data: {"type":"content","text":"骤","node":"model_request"}
+
+data: {"type":"content","text":"2","node":"model_request"}
+
+data: {"type":"content","text":"：","node":"model_request"}
+
+data: {"type":"content","text":"创建","node":"model_request"}
+
+data: {"type":"content","text":"项目","node":"model_request"}
+
+data: {"type":"content","text":"和","node":"model_request"}
+
+data: {"type":"content","text":"报告","node":"model_request"}
+
+data: {"type":"content","text":" ✅","node":"model_request"}
+
+data: {"type":"content","text":"\n","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":" 已","node":"model_request"}
+
+data: {"type":"content","text":"创建","node":"model_request"}
+
+data: {"type":"content","text":"项目","node":"model_request"}
+
+data: {"type":"content","text":"：\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" name","node":"model_request"}
+
+data: {"type":"content","text":":","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"202","node":"model_request"}
+
+data: {"type":"content","text":"603","node":"model_request"}
+
+data: {"type":"content","text":"12","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"001","node":"model_request"}
+
+data: {"type":"content","text":"-test","node":"model_request"}
+
+data: {"type":"content","text":"`\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"project","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"j","node":"model_request"}
+
+data: {"type":"content","text":"3","node":"model_request"}
+
+data: {"type":"content","text":"tw","node":"model_request"}
+
+data: {"type":"content","text":"000","node":"model_request"}
+
+data: {"type":"content","text":"kg","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"rw","node":"model_request"}
+
+data: {"type":"content","text":"5","node":"model_request"}
+
+data: {"type":"content","text":"on","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"fs","node":"model_request"}
+
+data: {"type":"content","text":"q","node":"model_request"}
+
+data: {"type":"content","text":"`\n\n","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":" 已","node":"model_request"}
+
+data: {"type":"content","text":"创建","node":"model_request"}
+
+data: {"type":"content","text":"报告","node":"model_request"}
+
+data: {"type":"content","text":"并","node":"model_request"}
+
+data: {"type":"content","text":"获取","node":"model_request"}
+
+data: {"type":"content","text":" ID","node":"model_request"}
+
+data: {"type":"content","text":"：\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"j","node":"model_request"}
+
+data: {"type":"content","text":"fn","node":"model_request"}
+
+data: {"type":"content","text":"w","node":"model_request"}
+
+data: {"type":"content","text":"000","node":"model_request"}
+
+data: {"type":"content","text":"wg","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"rk","node":"model_request"}
+
+data: {"type":"content","text":"5","node":"model_request"}
+
+data: {"type":"content","text":"z","node":"model_request"}
+
+data: {"type":"content","text":"fd","node":"model_request"}
+
+data: {"type":"content","text":"7","node":"model_request"}
+
+data: {"type":"content","text":"od","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CC","node":"model_request"}
+
+data: {"type":"content","text":"毛","node":"model_request"}
+
+data: {"type":"content","text":"油","node":"model_request"}
+
+data: {"type":"content","text":"溶","node":"model_request"}
+
+data: {"type":"content","text":"剂","node":"model_request"}
+
+data: {"type":"content","text":"残","node":"model_request"}
+
+data: {"type":"content","text":"留","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"1","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"j","node":"model_request"}
+
+data: {"type":"content","text":"fr","node":"model_request"}
+
+data: {"type":"content","text":"200","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"yg","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"r","node":"model_request"}
+
+data: {"type":"content","text":"ct","node":"model_request"}
+
+data: {"type":"content","text":"vv","node":"model_request"}
+
+data: {"type":"content","text":"w","node":"model_request"}
+
+data: {"type":"content","text":"pf","node":"model_request"}
+
+data: {"type":"content","text":"z","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CAB","node":"model_request"}
+
+data: {"type":"content","text":"IO","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"19","node":"model_request"}
+
+data: {"type":"content","text":" 油","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"塑","node":"model_request"}
+
+data: {"type":"content","text":"化","node":"model_request"}
+
+data: {"type":"content","text":"剂","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"2","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"jf","node":"model_request"}
+
+data: {"type":"content","text":"nt","node":"model_request"}
+
+data: {"type":"content","text":"000","node":"model_request"}
+
+data: {"type":"content","text":"ug","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"rv","node":"model_request"}
+
+data: {"type":"content","text":"ne","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"x","node":"model_request"}
+
+data: {"type":"content","text":"hu","node":"model_request"}
+
+data: {"type":"content","text":"q","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CAB","node":"model_request"}
+
+data: {"type":"content","text":"IO","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"18","node":"model_request"}
+
+data: {"type":"content","text":" 油","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"3","node":"model_request"}
+
+data: {"type":"content","text":"-M","node":"model_request"}
+
+data: {"type":"content","text":"CP","node":"model_request"}
+
+data: {"type":"content","text":"D","node":"model_request"}
+
+data: {"type":"content","text":" GL","node":"model_request"}
+
+data: {"type":"content","text":"Y","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"3","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"j","node":"model_request"}
+
+data: {"type":"content","text":"fh","node":"model_request"}
+
+data: {"type":"content","text":"200","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"sg","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"r","node":"model_request"}
+
+data: {"type":"content","text":"06","node":"model_request"}
+
+data: {"type":"content","text":"g","node":"model_request"}
+
+data: {"type":"content","text":"pi","node":"model_request"}
+
+data: {"type":"content","text":"14","node":"model_request"}
+
+data: {"type":"content","text":"h","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CAB","node":"model_request"}
+
+data: {"type":"content","text":"IO","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"17","node":"model_request"}
+
+data: {"type":"content","text":" 油","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"磷","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"4","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"jf","node":"model_request"}
+
+data: {"type":"content","text":"380","node":"model_request"}
+
+data: {"type":"content","text":"00","node":"model_request"}
+
+data: {"type":"content","text":"mg","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"r","node":"model_request"}
+
+data: {"type":"content","text":"tn","node":"model_request"}
+
+data: {"type":"content","text":"n","node":"model_request"}
+
+data: {"type":"content","text":"97","node":"model_request"}
+
+data: {"type":"content","text":"hm","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CAB","node":"model_request"}
+
+data: {"type":"content","text":"IO","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"16","node":"model_request"}
+
+data: {"type":"content","text":" 油","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"总","node":"model_request"}
+
+data: {"type":"content","text":"汞","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"5","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"jf","node":"model_request"}
+
+data: {"type":"content","text":"da","node":"model_request"}
+
+data: {"type":"content","text":"000","node":"model_request"}
+
+data: {"type":"content","text":"q","node":"model_request"}
+
+data: {"type":"content","text":"g","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"ru","node":"model_request"}
+
+data: {"type":"content","text":"42","node":"model_request"}
+
+data: {"type":"content","text":"q","node":"model_request"}
+
+data: {"type":"content","text":"zc","node":"model_request"}
+
+data: {"type":"content","text":"ya","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CAB","node":"model_request"}
+
+data: {"type":"content","text":"IO","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"12","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" 油","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"反","node":"model_request"}
+
+data: {"type":"content","text":"式","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"肪","node":"model_request"}
+
+data: {"type":"content","text":"酸","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" -","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"report","node":"model_request"}
+
+data: {"type":"content","text":"Id","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"_","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":" =","node":"model_request"}
+
+data: {"type":"content","text":" cm","node":"model_request"}
+
+data: {"type":"content","text":"ol","node":"model_request"}
+
+data: {"type":"content","text":"6","node":"model_request"}
+
+data: {"type":"content","text":"j","node":"model_request"}
+
+data: {"type":"content","text":"fa","node":"model_request"}
+
+data: {"type":"content","text":"400","node":"model_request"}
+
+data: {"type":"content","text":"0","node":"model_request"}
+
+data: {"type":"content","text":"og","node":"model_request"}
+
+data: {"type":"content","text":"35","node":"model_request"}
+
+data: {"type":"content","text":"rw","node":"model_request"}
+
+data: {"type":"content","text":"k","node":"model_request"}
+
+data: {"type":"content","text":"fb","node":"model_request"}
+
+data: {"type":"content","text":"q","node":"model_request"}
+
+data: {"type":"content","text":"jp","node":"model_request"}
+
+data: {"type":"content","text":"1","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"（","node":"model_request"}
+
+data: {"type":"content","text":"CAB","node":"model_request"}
+
+data: {"type":"content","text":"IO","node":"model_request"}
+
+data: {"type":"content","text":"-","node":"model_request"}
+
+data: {"type":"content","text":"10","node":"model_request"}
+
+data: {"type":"content","text":" ","node":"model_request"}
+
+data: {"type":"content","text":" 油","node":"model_request"}
+
+data: {"type":"content","text":"脂","node":"model_request"}
+
+data: {"type":"content","text":"过","node":"model_request"}
+
+data: {"type":"content","text":"氧","node":"model_request"}
+
+data: {"type":"content","text":"化","node":"model_request"}
+
+data: {"type":"content","text":"值","node":"model_request"}
+
+data: {"type":"content","text":"检测","node":"model_request"}
+
+data: {"type":"content","text":"原","node":"model_request"}
+
+data: {"type":"content","text":"始","node":"model_request"}
+
+data: {"type":"content","text":"记录","node":"model_request"}
+
+data: {"type":"content","text":"）\n\n","node":"model_request"}
+
+data: {"type":"content","text":"---\n\n","node":"model_request"}
+
+data: {"type":"content","text":"###","node":"model_request"}
+
+data: {"type":"content","text":" 步","node":"model_request"}
+
+data: {"type":"content","text":"骤","node":"model_request"}
+
+data: {"type":"content","text":"3","node":"model_request"}
+
+data: {"type":"content","text":"：","node":"model_request"}
+
+data: {"type":"content","text":"关联","node":"model_request"}
+
+data: {"type":"content","text":"已","node":"model_request"}
+
+data: {"type":"content","text":"上传","node":"model_request"}
+
+data: {"type":"content","text":"物","node":"model_request"}
+
+data: {"type":"content","text":"料","node":"model_request"}
+
+data: {"type":"content","text":"文件","node":"model_request"}
+
+data: {"type":"content","text":" ⏳","node":"model_request"}
+
+data: {"type":"content","text":"\n","node":"model_request"}
+
+data: {"type":"content","text":"尚","node":"model_request"}
+
+data: {"type":"content","text":"未","node":"model_request"}
+
+data: {"type":"content","text":"执行","node":"model_request"}
+
+data: {"type":"content","text":"。","node":"model_request"}
+
+data: {"type":"content","text":"  \n","node":"model_request"}
+
+data: {"type":"content","text":"如","node":"model_request"}
+
+data: {"type":"content","text":"你","node":"model_request"}
+
+data: {"type":"content","text":"确认","node":"model_request"}
+
+data: {"type":"content","text":"继续","node":"model_request"}
+
+data: {"type":"content","text":"，我","node":"model_request"}
+
+data: {"type":"content","text":"将","node":"model_request"}
+
+data: {"type":"content","text":"立","node":"model_request"}
+
+data: {"type":"content","text":"刻","node":"model_request"}
+
+data: {"type":"content","text":"开始","node":"model_request"}
+
+data: {"type":"content","text":"逐","node":"model_request"}
+
+data: {"type":"content","text":"条","node":"model_request"}
+
+data: {"type":"content","text":"调用","node":"model_request"}
+
+data: {"type":"content","text":" `","node":"model_request"}
+
+data: {"type":"content","text":"associate","node":"model_request"}
+
+data: {"type":"content","text":"_document","node":"model_request"}
+
+data: {"type":"content","text":"`","node":"model_request"}
+
+data: {"type":"content","text":"，","node":"model_request"}
+
+data: {"type":"content","text":"并","node":"model_request"}
+
+data: {"type":"content","text":"在","node":"model_request"}
+
+data: {"type":"content","text":"任","node":"model_request"}
+
+data: {"type":"content","text":"一","node":"model_request"}
+
+data: {"type":"content","text":"失败","node":"model_request"}
+
+data: {"type":"content","text":"时","node":"model_request"}
+
+data: {"type":"content","text":"立即","node":"model_request"}
+
+data: {"type":"content","text":"停止","node":"model_request"}
+
+data: {"type":"content","text":"并","node":"model_request"}
+
+data: {"type":"content","text":"返回","node":"model_request"}
+
+data: {"type":"content","text":"具体","node":"model_request"}
+
+data: {"type":"content","text":"错误","node":"model_request"}
+
+data: {"type":"content","text":"。","node":"model_request"}
+
+data: {"type":"status","text":"工具执行完成，正在整合结果..."}
+
+data: {"type":"metrics","total_duration":64843,"pure_generate_duration":8414,"token_usage":{"inputTokens":8400,"outputTokens":473,"totalTokens":8873},"conversation_id":"cmol6iv0b000gg35rsri5mmcj"}
+

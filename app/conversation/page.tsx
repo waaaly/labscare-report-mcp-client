@@ -62,6 +62,10 @@ export default function LLMConversationPage() {
     outputTokens: number;
     totalTokens: number;
   }>>([]);
+  const [modelContextLimits, setModelContextLimits] = useState<{
+    maxInputTokens: number;
+    maxOutputTokens: number;
+  }>({ maxInputTokens: 0, maxOutputTokens: 0 });
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastUserMessageRef = useRef<{ text: string; files: File[] } | null>(null);
@@ -106,6 +110,15 @@ export default function LLMConversationPage() {
       setShowUploadBackground(false);
       setCurrentBranchId('main');
       setBranches([{ id: 'main', name: '主分支', createdAt: Date.now() }]);
+
+      // Reset model context limits for new conversation
+      const modelConfig = availableModels.find(m => m.model === currentModel);
+      if (modelConfig) {
+        setModelContextLimits({
+          maxInputTokens: modelConfig.maxInputTokens,
+          maxOutputTokens: modelConfig.maxOutputTokens,
+        });
+      }
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
@@ -116,9 +129,52 @@ export default function LLMConversationPage() {
     setCurrentConversationId(id);
     await loadConversation(id);
     setInput('');
-    setUsageHistory([]);
     setIsShowWelcome(false);
-  }, [currentConversationId, setCurrentConversationId, loadConversation]);
+    setUsageHistory(() => {
+      if (!currentMessages) return [];
+      const history: Array<{
+        content: string;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+      }> = [];
+      for (let i = 0; i < currentMessages.length; i++) {
+        const message = currentMessages[i];
+        if (message.role.toLowerCase() === 'user') {
+          const nextMessage = i + 1 < currentMessages.length ? currentMessages[i + 1] : null;
+          const hasAssistantReply = nextMessage && nextMessage.role.toLowerCase() === 'assistant';
+          history.push({
+            content: message.content,
+            inputTokens: hasAssistantReply ? (nextMessage.inputTokens || 0) : 0,
+            outputTokens: hasAssistantReply ? (nextMessage.outputTokens || 0) : 0,
+            totalTokens: hasAssistantReply ? ((nextMessage.inputTokens || 0) + (nextMessage.outputTokens || 0)) : 0,
+          });
+        }
+      }
+      return history;
+    });
+    // Load model context limits for the conversation's model
+    const conversation = conversations.find(c => c.id === id);
+    if (conversation) {
+
+      setConversationTokenUsage({
+        inputTokens: conversation.totalInputTokens || 0,
+        outputTokens: conversation.totalOutputTokens || 0,
+        totalTokens: conversation.totalTokens || 0,
+      })
+      if (conversation.model) {
+        const modelConfig = availableModels.find(m => m.model === conversation.model);
+        if (modelConfig) {
+          setModelContextLimits({
+            maxInputTokens: modelConfig.maxInputTokens,
+            maxOutputTokens: modelConfig.maxOutputTokens,
+          });
+          setCurrentModel(conversation.model);
+        }
+      }
+    }
+
+  }, [currentConversationId, setModelContextLimits, setUsageHistory, setConversationTokenUsage, setCurrentModel, setCurrentConversationId, loadConversation, conversations]);
 
   const handleQuickAction = useCallback(async (action: string) => {
     try {
@@ -245,8 +301,8 @@ export default function LLMConversationPage() {
       let response: Response;
       const formData = new FormData();
       formData.append('prompt', inputText.trim());
-      formData.append('contextJson', JSON.stringify({ 
-        conversationId: currentConversationId, 
+      formData.append('contextJson', JSON.stringify({
+        conversationId: currentConversationId,
         messagesCount: newMessages.length,
       }));
       formData.append('model', currentModel);
@@ -476,8 +532,17 @@ export default function LLMConversationPage() {
 
   const handleModelChange = useCallback((modelValue: string) => {
     setCurrentModel(modelValue);
-    console.log(modelValue)
+    console.log(modelValue);
     addLog(`Switched model to: ${modelValue}`);
+
+    // Update model context limits when model changes
+    const modelConfig = availableModels.find(m => m.model === modelValue);
+    if (modelConfig) {
+      setModelContextLimits({
+        maxInputTokens: modelConfig.maxInputTokens,
+        maxOutputTokens: modelConfig.maxOutputTokens,
+      });
+    }
   }, [addLog]);
 
   const handleCreateBranch = useCallback((messageIndex: number) => {
@@ -583,7 +648,7 @@ export default function LLMConversationPage() {
       </div>
 
       <div className="flex-1 h-full flex flex-col min-w-0">
-        { (isShowWelcome && currentMessages.length === 0) ? (
+        {(isShowWelcome && currentMessages.length === 0) ? (
           <WelcomeCard onQuickAction={handleQuickAction} />
         ) : (
           <ChatArea
@@ -607,7 +672,7 @@ export default function LLMConversationPage() {
       </div>
 
       <div className="w-[300px] h-full flex-shrink-0">
-        <AgentToolPanel 
+        <AgentToolPanel
           logs={logs}
           onInsertPrompt={handleInsertPrompt}
           currentModel={currentModel}
@@ -619,8 +684,11 @@ export default function LLMConversationPage() {
           availableModels={availableModels.map(model => ({
             id: `${model.model}`,
             name: model.name,
-            description: `${model.model}`
+            description: `${model.model}`,
+            maxInputTokens: model.maxInputTokens,
+            maxOutputTokens: model.maxOutputTokens,
           }))}
+          modelContextLimits={modelContextLimits}
         />
       </div>
     </div>

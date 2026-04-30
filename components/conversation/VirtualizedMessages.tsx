@@ -616,10 +616,10 @@ export function VirtualizedMessages({
     const pending = pendingMeasurementsRef.current;
     if (pending.size === 0) return;
 
-    console.log(
-      "[VirtualizedMessages] 处理批量高度测量，待测量数量:",
-      pending.size,
-    );
+    // console.log(
+    //   "[VirtualizedMessages] 处理批量高度测量，待测量数量:",
+    //   pending.size,
+    // );
 
     const updates: Array<{ index: number; height: number }> = [];
     const cache = heightCacheRef.current;
@@ -648,9 +648,9 @@ export function VirtualizedMessages({
         height: actualRounded,
       });
 
-      console.log(
-        `[VirtualizedMessages] 更新消息 ${index} 高度: ${actualRounded}px, 内容长度: ${msg.content?.length || 0}`,
-      );
+      // console.log(
+      //   `[VirtualizedMessages] 更新消息 ${index} 高度: ${actualRounded}px, 内容长度: ${msg.content?.length || 0}`,
+      // );
 
       cache.set(index, {
         height: actualRounded,
@@ -664,10 +664,10 @@ export function VirtualizedMessages({
     rafIdRef.current = null;
 
     if (updates.length > 0) {
-      console.log(
-        "[VirtualizedMessages] 强制重新渲染，更新数量:",
-        updates.length,
-      );
+      // console.log(
+      //   "[VirtualizedMessages] 强制重新渲染，更新数量:",
+      //   updates.length,
+      // );
       // 检查是否需要节流：流式传输时限制更新频率
       const now = Date.now();
       const hasStreaming = updates.some(u => {
@@ -695,7 +695,7 @@ export function VirtualizedMessages({
 
   const scheduleBatchMeasurement = React.useCallback(() => {
     if (rafIdRef.current !== null) return;
-    console.log("[VirtualizedMessages] 安排批量高度测量");
+    // console.log("[VirtualizedMessages] 安排批量高度测量");
     // 使用双重 RAF 确保布局完成后才测量
     rafIdRef.current = requestAnimationFrame(() => {
       requestAnimationFrame(processBatchMeasurements);
@@ -761,15 +761,15 @@ export function VirtualizedMessages({
         )}
         {messages.map((message, index) => {
           if (message.role.toLowerCase() === "user") {
-            console.log(`[VirtualizedMessages] 渲染用户消息 ${index}:`, {
-              hasFiles: !!message.attachments,
-              fileCount: message.attachments?.length || 0,
-              files: message.attachments?.map((f) => ({
-                name: f.name,
-                type: f.type,
-                contentLength: f.content?.length || 0,
-              })),
-            });
+            // console.log(`[VirtualizedMessages] 渲染用户消息 ${index}:`, {
+            //   hasFiles: !!message.attachments,
+            //   fileCount: message.attachments?.length || 0,
+            //   files: message.attachments?.map((f) => ({
+            //     name: f.name,
+            //     type: f.type,
+            //     contentLength: f.content?.length || 0,
+            //   })),
+            // });
             return (
               <div key={index} className="flex justify-end">
                 <div
@@ -953,15 +953,15 @@ export function VirtualizedMessages({
           };
 
           if (message.role.toLowerCase() === "user") {
-            console.log(`[VirtualizedMessages V] 渲染用户消息 ${index}:`, {
-              hasFiles: !!message.attachments,
-              fileCount: message.attachments?.length || 0,
-              files: message.attachments?.map((f) => ({
-                name: f.name,
-                type: f.type,
-                contentLength: f.content?.length || 0,
-              })),
-            });
+            // console.log(`[VirtualizedMessages V] 渲染用户消息 ${index}:`, {
+            //   hasFiles: !!message.attachments,
+            //   fileCount: message.attachments?.length || 0,
+            //   files: message.attachments?.map((f) => ({
+            //     name: f.name,
+            //     type: f.type,
+            //     contentLength: f.content?.length || 0,
+            //   })),
+            // });
             return (
               <div key={index} ref={assignRef} className="flex justify-end">
                 <div

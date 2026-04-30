@@ -271,9 +271,8 @@
       ],
       "evidence": null,
       "notes": "使用 @modelcontextprotocol/sdk"
-    }
-  ],
-  {
+    },
+     {
       "id": "llm-normalizer-pipeline",
       "priority": 1,
       "area": "llm",
@@ -289,8 +288,25 @@
       ],
       "evidence": "- 新增 lib/llm/normalizer.ts：normalizeMessageChunk() 统一所有厂商字段\n- 新增 lib/llm/assistant-accumulator.ts：分字段累积 content + reasoning，修复 assistantContent 丢失\n- 新增 lib/llm/sse-serializer.ts：encodeSSE() 统一 SSE 序列化，TextEncoder 模块级单例\n- 重构 app/api/llm/route.ts：streaming 核心替换为三层管道，~100 行缩减为 ~30 行\n- npm run typecheck 通过，0 错误",
       "notes": "新增文件：lib/llm/normalizer.ts, lib/llm/assistant-accumulator.ts, lib/llm/sse-serializer.ts；重构：app/api/llm/route.ts"
+    },
+    {
+      "id": "conv-context-visualization",
+      "priority": 1,
+      "area": "conversation",
+      "title": "上下文窗口可视化",
+      "user_visible_behavior": "用户选中某个对话后，在右侧高级设置的 Token 面板中可以看到输入/输出上下文窗口的使用情况，以进度条图表形式展示当前消耗和剩余容量，一目了然。",
+      "status": "passing",
+      "verification": [
+        "1. 选中一个有对话记录的会话",
+        "2. 切换到 Token 统计标签页",
+        "3. 验证显示输入上下文进度条（蓝色）和输出上下文进度条（绿色）",
+        "4. 验证显示已使用百分比和剩余数量",
+        "5. 切换不同模型，验证上下文限制随之变化"
+      ],
+      "evidence": "- lib/llm/model-config.ts：ModelConfig 接口新增 maxInputTokens / maxOutputTokens 字段\n- lib/llm/model-config.ts：availableModels 每个模型配置上下文限制（Kimi 128K/Gemini 1M/Claude 200K 等）\n- components/conversation/AgentToolPanel.tsx：新增 modelContextLimits prop\n- components/conversation/AgentToolPanel.tsx：Token 标签页新增上下文窗口可视化（渐变进度条 + 百分比 + 剩余量）\n- app/conversation/page.tsx：selectConversation / handleModelChange / createNewConversation 更新模型上下文限制状态\n- npm run typecheck 通过，0 错误",
+      "notes": "上下文限制与模型配置联动，切换模型时自动更新"
     }
   ],
-  "last_updated": "2026-04-30T14:12:00+08:00",
+  "last_updated": "2026-04-30T14:40:00+08:00",
   "updated_by": "Harness Engineering"
 }

@@ -29,7 +29,7 @@ npm run lint
 
 ### 当前最高优先级未完成功能
 根据 feature_list.json，P0、P1、P2 已全部完成。
-已完成功能：模型切换（P3）、Token 统计重构、文件夹上传验证弹窗、LLM 归一化 SSE 流水线
+已完成功能：模型切换（P3）、Token 统计重构、文件夹上传验证弹窗、LLM 归一化 SSE 流水线、上下文窗口可视化
 下一个功能：消息分支、Skill 切换（P3）
 
 ### 当前 Blocker
@@ -160,6 +160,18 @@ npm run lint
 | **提交记录** | 待提交 |
 | **已知风险或未解决问题** | Gemini thinking block 格式在不同 LangChain 版本可能有差异，已在 normalizer 中双路处理 |
 | **下一步最佳动作** | 提交本次变更，继续推进 Skill 切换、消息分支功能 |
+
+### 2026-04-30 14:45 - 第 10 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 为模型配置添加输入/输出上下文限制，并在对话界面 Token 面板中以图表形式展示上下文使用情况 |
+| **已完成** | 1. `lib/llm/model-config.ts`：ModelConfig 接口新增 maxInputTokens / maxOutputTokens 字段<br>2. `lib/llm/model-config.ts`：为 5 个模型配置上下文限制（Kimi 128K、DeepSeek 128K、GPT-4o 128K、Gemini 1M、Claude 200K）<br>3. `components/conversation/AgentToolPanel.tsx`：新增 modelContextLimits prop 和上下文窗口可视化组件<br>4. `app/conversation/page.tsx`：selectConversation / handleModelChange / createNewConversation 更新模型上下文限制状态 |
+| **运行过的验证** | `npm run typecheck` - ✅ 通过（0 错误） |
+| **已记录证据** | - lib/llm/model-config.ts：新增上下文限制字段和配置<br>- components/conversation/AgentToolPanel.tsx：Token 标签页新增上下文窗口进度条可视化<br>- app/conversation/page.tsx：模型切换时联动更新上下文限制<br>- feature_list.json：新增 conv-context-visualization 功能条目 |
+| **提交记录** | 待提交 |
+| **已知风险或未解决问题** | 无 |
+| **下一步最佳动作** | 提交本次变更，继续推进消息分支、Skill 切换功能 |
 
 ---
 
