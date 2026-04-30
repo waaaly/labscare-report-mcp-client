@@ -356,6 +356,39 @@ const ToolCallMessage = React.memo(
 );
 ToolCallMessage.displayName = 'ToolCallMessage';
 
+const ToolResultMessage = React.memo(
+  function ToolResultMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+    const isSuccess = content.includes('✅');
+    const isError = content.includes('❌');
+    
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const hasJsonData = !!jsonMatch;
+
+    return (
+      <div className={`border rounded-lg overflow-hidden ${isError ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+        <div className="flex items-center gap-2 p-3">
+          {isSuccess && <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />}
+          {isError && <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />}
+          <span className={`text-sm flex-1 ${isError ? 'text-red-700' : 'text-green-700'}`}>
+            {hasJsonData ? '工具执行结果' : content}
+          </span>
+          {isStreaming && <Loader2 className="w-4 h-4 text-green-600 animate-spin flex-shrink-0" />}
+        </div>
+        {hasJsonData && (
+          <div className="px-3 pb-3">
+            <pre className="text-sm text-gray-700 bg-white/50 rounded-lg p-3 overflow-x-auto text-wrap">
+              {content}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.content === next.content && prev.isStreaming === next.isStreaming,
+);
+ToolResultMessage.displayName = 'ToolResultMessage';
+
 const StatusMessage = React.memo(
   function StatusMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
     return (
@@ -833,6 +866,19 @@ export function VirtualizedMessages({
               <div key={index} className="flex justify-start">
                 <div className="max-w-[80%]">
                   <ToolCallMessage
+                    content={message.content}
+                    isStreaming={message.isStreaming}
+                  />
+                </div>
+              </div>
+            );
+          }
+
+          if (message.messageType === "tool_result") {
+            return (
+              <div key={index} className="flex justify-start">
+                <div className="max-w-[80%]">
+                  <ToolResultMessage
                     content={message.content}
                     isStreaming={message.isStreaming}
                   />

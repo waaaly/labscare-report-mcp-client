@@ -173,6 +173,18 @@ npm run lint
 | **已知风险或未解决问题** | 无 |
 | **下一步最佳动作** | 提交本次变更，继续推进消息分支、Skill 切换功能 |
 
+### 2026-04-30 15:30 - 第 11 轮
+
+| 项目 | 内容 |
+|------|------|
+| **本轮目标** | 重构 handleSend 方法，抽离 StreamStore、SSEParser 和 StreamController，解决 SSE 解析逻辑分散在 UI 层的问题 |
+| **已完成** | 1. `store/stream-store.ts`（新增）：流式会话状态管理，封装所有流式消息处理逻辑（content/thought/tool_call/tool_result/status/metrics）<br>2. `lib/llm/sse-parser.ts`（新增）：统一解析 SSE 协议，负责数据解码和事件归一化<br>3. `lib/llm/stream-controller.ts`（新增）：流式处理控制器，管理 fetch 请求、事件分发和生命周期<br>4. `app/conversation/page.tsx`（重构）：handleSend 从 ~260 行精简为 ~100 行，不再包含 SSE 解析逻辑 |
+| **运行过的验证** | `npm run typecheck` - ✅ 通过（0 错误） |
+| **已记录证据** | - store/stream-store.ts：StreamState + useStreamStore Hook + handleStreamEvent 事件处理器<br>- lib/llm/sse-parser.ts：SSEParser 类，支持分块解析和事件归一化<br>- lib/llm/stream-controller.ts：StreamController 类，支持 start/stop/回调管理<br>- app/conversation/page.tsx：使用新的三层架构（handleSend → StreamController → StreamStore → updateMessages） |
+| **提交记录** | 待提交 |
+| **已知风险或未解决问题** | 无 |
+| **下一步最佳动作** | 提交本次变更，继续推进消息分支、Skill 切换功能 |
+
 ---
 
 > 本文件遵循 [Learn Harness Engineering](https://walkinglabs.github.io/learn-harness-engineering/) 规范

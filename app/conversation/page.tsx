@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Buffer } from 'buffer';
 import ConversationSidebar from '@/components/conversation/ConversationSidebar';
 import ChatArea from '@/components/conversation/ChatArea';
@@ -8,20 +8,22 @@ import AgentToolPanel from '@/components/conversation/AgentToolPanel';
 import WelcomeCard from '@/components/conversation/WelcomeCard';
 import { availableModels } from '@/lib/llm/model-config';
 import { useConversationStore, Message, FileAttachment } from '@/store/conversation-store';
+import { useStreamStore, StreamEvent } from '@/store/stream-store';
+import { StreamController } from '@/lib/llm/stream-controller';
 
 export default function LLMConversationPage() {
   const {
     conversations,
     currentConversationId,
-    currentMessages,
-    isLoading: storeLoading,
+    currentMessages: storeMessages,
+    isLoading: convStoreLoading,
     error: storeError,
     setConversations,
     setCurrentConversationId,
     setCurrentMessages,
-    updateMessages,
-    addMessage,
-    updateLastMessage,
+    updateMessages: storeUpdateMessages,
+    addMessage: storeAddMessage,
+    updateLastMessage: storeUpdateLastMessage,
     setLoading,
     setError,
     loadConversations,
@@ -31,8 +33,25 @@ export default function LLMConversationPage() {
     deleteConversation,
   } = useConversationStore();
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentStatus, setCurrentStatus] = useState<string | null>(null);
+  const {
+    messages: streamMessages,
+    isStreaming,
+    currentStatus,
+    currentTokenUsage,
+    conversationTokenUsage,
+    requestCount,
+    usageHistory,
+    setMessages,
+    appendMessage,
+    updateMessages,
+    handleStreamEvent,
+    finishStreaming,
+    startStreaming,
+    setLastUserMessage,
+    getLastUserMessage,
+    resetTokenUsage,
+  } = useStreamStore(storeMessages);
+
   const [input, setInput] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -44,32 +63,18 @@ export default function LLMConversationPage() {
   const [branches, setBranches] = useState<{ id: string; name: string; createdAt: number }[]>([
     { id: 'main', name: '主分支', createdAt: Date.now() }
   ]);
-  const [currentTokenUsage, setCurrentTokenUsage] = useState<{
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  } | null>(null);
-  const [conversationTokenUsage, setConversationTokenUsage] = useState<{
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  }>({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
-  const [requestCount, setRequestCount] = useState(0);
-  const [showUploadBackground, setShowUploadBackground] = useState(false);
-  const [usageHistory, setUsageHistory] = useState<Array<{
-    content: string;
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  }>>([]);
+  const [conversationLoading, setConversationIsLoading] = useState(false);
   const [modelContextLimits, setModelContextLimits] = useState<{
     maxInputTokens: number;
     maxOutputTokens: number;
   }>({ maxInputTokens: 0, maxOutputTokens: 0 });
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const lastUserMessageRef = useRef<{ text: string; files: File[] } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const addLog = useCallback((message: string) => {
+    setLogs(prev => [...prev.slice(-49), message]);
+    console.log(`[Log] ${message}`);
+  }, []);
 
   const scrollToBottom = useCallback((smooth = false) => {
     messagesEndRef.current?.scrollIntoView({
@@ -77,104 +82,131 @@ export default function LLMConversationPage() {
     });
   }, []);
 
-  useEffect(() => {
-    scrollToBottom(true);
-  }, [currentMessages, scrollToBottom]);
-
-  const addLog = useCallback((line: string) => {
-    const t = new Date().toLocaleTimeString();
-    setLogs(prev => {
-      const next = [...prev, `${t} ${line}`];
-      return next.slice(-200);
+  const streamController = useMemo(() => {
+    return new StreamController({
+      onEvent: handleStreamEvent,
+      onComplete: finishStreaming,
+      onError: (error) => {
+        console.error('Stream error:', error);
+        appendMessage({
+          role: 'ASSISTANT',
+          content: 'Sorry, I encountered an error. Please try again.',
+          messageType: 'content',
+          isStreaming: false,
+          timestamp: Date.now(),
+        });
+        addLog('Error');
+      },
+      onLog: addLog,
     });
-  }, []);
+  }, [handleStreamEvent, finishStreaming, appendMessage, addLog]);
 
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
 
-  const createNewConversation = useCallback(async () => {
-    try {
-      const id = await createConversation('新对话', currentModel);
-      setCurrentMessages([]);
-      setInput('');
-      setIsShowWelcome(true);
-      setUsageHistory([]);
-      setCurrentTokenUsage(null);
-      setConversationTokenUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
-      setRequestCount(0);
-      setCurrentStatus(null);
-      setIsLoading(false);
-      setLogs([]);
+  useEffect(() => {
+    if (!currentConversationId) {
       setSelectedFiles([]);
-      setShowUploadBackground(false);
-      setCurrentBranchId('main');
-      setBranches([{ id: 'main', name: '主分支', createdAt: Date.now() }]);
+      resetTokenUsage();
+    } else {
+    }
+  }, [currentConversationId, resetTokenUsage]);
 
-      // Reset model context limits for new conversation
-      const modelConfig = availableModels.find(m => m.model === currentModel);
+  useEffect(() => {
+    if (storeMessages.length === 0 && input.trim() === '') {
+      setIsShowWelcome(true);
+    } else {
+      setIsShowWelcome(false);
+    }
+  }, [storeMessages, input]);
+
+  useEffect(() => {
+    if (currentConversationId) {
+      const model = conversations.find(c => c.id === currentConversationId)?.model || currentModel;
+      const modelConfig = availableModels.find(m => m.model === model);
       if (modelConfig) {
         setModelContextLimits({
-          maxInputTokens: modelConfig.maxInputTokens,
-          maxOutputTokens: modelConfig.maxOutputTokens,
+          maxInputTokens: modelConfig.maxInputTokens || 0,
+          maxOutputTokens: modelConfig.maxOutputTokens || 0,
         });
       }
-    } catch (error) {
-      console.error('Failed to create conversation:', error);
     }
-  }, [createConversation, currentModel, setCurrentMessages]);
+  }, [currentConversationId, conversations, currentModel]);
+
+  useEffect(() => {
+    setCurrentMessages(streamMessages);
+  }, [streamMessages, setCurrentMessages]);
+
+  useEffect(() => {
+    if (isStreaming || currentStatus) {
+      scrollToBottom(false);
+    }
+  }, [isStreaming, currentStatus, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setMessages(storeMessages);
+    }
+  }, [storeMessages, isStreaming, setMessages]);
+
+  const createNewConversation = useCallback(async () => {
+    await createConversation('New Conversation', currentModel);
+    resetTokenUsage();
+    setSelectedFiles([]);
+    setInput('');
+    addLog('Created new conversation');
+  }, [createConversation, currentModel, resetTokenUsage, addLog]);
 
   const selectConversation = useCallback(async (id: string) => {
-    if (id === currentConversationId) return;
     setCurrentConversationId(id);
-    await loadConversation(id);
-    setInput('');
-    setIsShowWelcome(false);
-    setUsageHistory(() => {
-      if (!currentMessages) return [];
-      const history: Array<{
-        content: string;
-        inputTokens: number;
-        outputTokens: number;
-        totalTokens: number;
-      }> = [];
-      for (let i = 0; i < currentMessages.length; i++) {
-        const message = currentMessages[i];
-        if (message.role.toLowerCase() === 'user') {
-          const nextMessage = i + 1 < currentMessages.length ? currentMessages[i + 1] : null;
-          const hasAssistantReply = nextMessage && nextMessage.role.toLowerCase() === 'assistant';
-          history.push({
-            content: message.content,
-            inputTokens: hasAssistantReply ? (nextMessage.inputTokens || 0) : 0,
-            outputTokens: hasAssistantReply ? (nextMessage.outputTokens || 0) : 0,
-            totalTokens: hasAssistantReply ? ((nextMessage.inputTokens || 0) + (nextMessage.outputTokens || 0)) : 0,
-          });
-        }
-      }
-      return history;
-    });
-    // Load model context limits for the conversation's model
-    const conversation = conversations.find(c => c.id === id);
-    if (conversation) {
 
-      setConversationTokenUsage({
-        inputTokens: conversation.totalInputTokens || 0,
-        outputTokens: conversation.totalOutputTokens || 0,
-        totalTokens: conversation.totalTokens || 0,
-      })
-      if (conversation.model) {
-        const modelConfig = availableModels.find(m => m.model === conversation.model);
-        if (modelConfig) {
-          setModelContextLimits({
-            maxInputTokens: modelConfig.maxInputTokens,
-            maxOutputTokens: modelConfig.maxOutputTokens,
-          });
-          setCurrentModel(conversation.model);
-        }
+    await loadConversation(id);
+
+    const conv = conversations.find(c => c.id === id);
+    if (conv?.model) {
+      setCurrentModel(conv.model);
+      const modelConfig = availableModels.find(m => m.model === conv.model);
+      if (modelConfig) {
+        setModelContextLimits({
+          maxInputTokens: modelConfig.maxInputTokens || 0,
+          maxOutputTokens: modelConfig.maxOutputTokens || 0,
+        });
       }
     }
 
-  }, [currentConversationId, setModelContextLimits, setUsageHistory, setConversationTokenUsage, setCurrentModel, setCurrentConversationId, loadConversation, conversations]);
+    const loadedMessages = useConversationStore.getState().currentMessages;
+    const history: Array<{
+      content: string;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    }> = [];
+    for (let i = 0; i + 1 < loadedMessages.length; i += 2) {
+      const userMsg = loadedMessages[i];
+      const assistantMsg = loadedMessages[i + 1];
+      if (userMsg.role !== 'USER' || assistantMsg.role !== 'ASSISTANT') continue;
+      if (assistantMsg.inputTokens == null && assistantMsg.outputTokens == null) continue;
+      history.push({
+        content: userMsg.content.slice(0, 50),
+        inputTokens: assistantMsg.inputTokens || 0,
+        outputTokens: assistantMsg.outputTokens || 0,
+        totalTokens: (assistantMsg.inputTokens || 0) + (assistantMsg.outputTokens || 0),
+      });
+    }
+
+    resetTokenUsage(
+      {
+        inputTokens: conv?.totalInputTokens || 0,
+        outputTokens: conv?.totalOutputTokens || 0,
+        totalTokens: conv?.totalTokens || 0,
+      },
+      history,
+    );
+    setInput('');
+    setSelectedFiles([]);
+    addLog(`Selected conversation: ${id}`);
+  }, [conversations, setCurrentConversationId, loadConversation, resetTokenUsage, addLog]);
 
   const handleQuickAction = useCallback(async (action: string) => {
     try {
@@ -189,15 +221,25 @@ export default function LLMConversationPage() {
       };
       setInput(prompts[action] || '');
       setIsShowWelcome(false);
-      if (action === '批量导入报告物料') {
-        setShowUploadBackground(true);
-      } else {
-        setShowUploadBackground(false);
-      }
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
-  }, [createConversation, currentModel, setCurrentMessages]);
+  }, [setInput, setCurrentMessages, setIsShowWelcome]);
+
+  const handleModelChange = useCallback((model: string) => {
+    setCurrentModel(model);
+    const modelConfig = availableModels.find(m => m.model === model);
+    if (modelConfig) {
+      setModelContextLimits({
+        maxInputTokens: modelConfig.maxInputTokens || 0,
+        maxOutputTokens: modelConfig.maxOutputTokens || 0,
+      });
+    }
+    if (currentConversationId) {
+      updateConversation(currentConversationId, { model });
+    }
+    addLog(`Model changed to: ${model}`);
+  }, [currentConversationId, updateConversation, addLog]);
 
   const handleInsertPrompt = useCallback((prompt: string) => {
     setInput(prompt);
@@ -233,9 +275,6 @@ export default function LLMConversationPage() {
   const handleSend = useCallback(async (inputText: string) => {
     console.log('handleSend', inputText, selectedFiles);
     if (!inputText.trim() && selectedFiles.length === 0) return;
-
-    lastUserMessageRef.current = { text: inputText, files: selectedFiles };
-    abortControllerRef.current = new AbortController();
 
     const fileAttachments: FileAttachment[] = [];
     for (const file of selectedFiles) {
@@ -281,201 +320,62 @@ export default function LLMConversationPage() {
     };
 
     const shouldAddMessage = inputText.trim() || fileAttachments.length > 0;
-    const newMessages = shouldAddMessage
-      ? [...currentMessages, userMessage]
-      : [...currentMessages];
-
-    setCurrentMessages(newMessages);
+    if (shouldAddMessage) {
+      appendMessage(userMessage);
+    }
     if (inputText.trim()) setInput('');
-    setIsLoading(true);
+    setConversationIsLoading(true);
     if (inputText.trim()) addLog(inputText.trim());
     if (selectedFiles.length > 0) {
       addLog(`Files: ${selectedFiles.map(f => f.name).join(', ')}`);
     }
 
-    console.log('文件附件处理完成:', fileAttachments);
-    console.log('用户消息:', userMessage);
-    console.log('新消息列表:', newMessages);
+    setLastUserMessage(inputText, selectedFiles);
+    startStreaming();
+
+    const formData = new FormData();
+    formData.append('prompt', inputText.trim());
+    formData.append('contextJson', JSON.stringify({
+      conversationId: currentConversationId,
+      messagesCount: streamMessages.length + 1,
+    }));
+    formData.append('model', currentModel);
+    if (selectedFiles.length > 0) {
+      selectedFiles.forEach((file) => {
+        formData.append('files', file);
+      });
+    }
 
     try {
-      let response: Response;
-      const formData = new FormData();
-      formData.append('prompt', inputText.trim());
-      formData.append('contextJson', JSON.stringify({
-        conversationId: currentConversationId,
-        messagesCount: newMessages.length,
-      }));
-      formData.append('model', currentModel);
-      if (selectedFiles.length > 0) {
-        selectedFiles.forEach((file) => {
-          formData.append('files', file);
-        });
-      }
-      response = await fetch('/api/llm', {
-        method: 'POST',
-        body: formData,
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error('API request failed');
-      }
-
-      if (!response.body) {
-        throw new Error('No response body');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let sseBuffer = "";
-      console.log('[Client] 开始读取流式响应');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log('[Client] 流式响应结束');
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-        console.log('[Client] 收到数据块，大小:', chunk.length, 'bytes');
-        sseBuffer += chunk;
-
-        const lines = sseBuffer.split('\n');
-        sseBuffer = lines.pop() || '';
-        console.log('[Client] 处理 SSE 行数:', lines.length);
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data) {
-              console.log('[Client] 收到原始SSE数据:', data);
-              setIsLoading(false);
-              try {
-                const json = JSON.parse(data);
-                console.log('[Client] 解析JSON成功，类型:', json.type, '内容:', json.text?.substring(0, 30) || json.tool || json.ttft || 'N/A');
-                if (json.type === 'content' && json.text) {
-                  updateMessages((prev) => {
-                    const lastMsg = prev[prev.length - 1];
-                    let newMessages: Message[];
-                    if (lastMsg?.messageType === 'content' || (lastMsg?.role === 'ASSISTANT' && !lastMsg?.messageType)) {
-                      newMessages = [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text, messageType: 'content', isStreaming: true }];
-                    } else {
-                      newMessages = [...prev, { role: 'ASSISTANT', content: json.text, messageType: 'content', isStreaming: true, timestamp: Date.now() }];
-                    }
-                    return newMessages;
-                  });
-                } else if (json.type === 'thought' && json.text) {
-                  if (json.node === 'tools') {
-                    updateMessages((prev) => {
-                      for (let i = prev.length - 1; i >= 0; i--) {
-                        if (prev[i].messageType === 'tool_call' && prev[i].isStreaming) {
-                          const updated = [...prev];
-                          updated[i] = { ...updated[i], content: updated[i].content + '\n' + json.text, isStreaming: false };
-                          return updated;
-                        }
-                      }
-                      return [...prev, { role: 'ASSISTANT', content: json.text, messageType: 'thought', isStreaming: false, timestamp: Date.now() }];
-                    });
-                  } else {
-                    updateMessages((prev) => [
-                      ...prev.map(msg => msg.messageType === 'thought' ? { ...msg, isStreaming: false } : msg),
-                      { role: 'ASSISTANT', content: json.text, messageType: 'thought', isStreaming: true, timestamp: Date.now() },
-                    ]);
-                  }
-                  console.log(`[Client] 处理thought消息，内容: "${json.text.substring(0, 30)}..."`);
-                  addLog(`Thought: ${json.text.slice(0, 50)}...`);
-                } else if (json.type === 'tool_call' && json.message) {
-                  updateMessages((prev) => [
-                    ...prev,
-                    { role: 'ASSISTANT', content: json.message, messageType: 'tool_call', toolName: json.tool, isStreaming: true, timestamp: Date.now() },
-                  ]);
-                  console.log(`[Client] 处理tool_call消息，工具: ${json.tool}`);
-                  addLog(`Tool Call: ${json.tool}`);
-                } else if (json.type === 'status' && json.text) {
-                  console.log(`[Client] 处理status消息，内容: "${json.text}"`);
-                  addLog(`Status: ${json.text}`);
-                  setCurrentStatus(json.text);
-                } else if (json.type === 'metrics' && json.token_usage) {
-                  const usage = json.token_usage;
-                  console.log('[Client] 处理 token 使用量:', usage);
-                  setCurrentTokenUsage(usage);
-                  setConversationTokenUsage(prev => ({
-                    inputTokens: prev.inputTokens + (usage.inputTokens || 0),
-                    outputTokens: prev.outputTokens + (usage.outputTokens || 0),
-                    totalTokens: prev.totalTokens + (usage.totalTokens || 0),
-                  }));
-                  setRequestCount(prev => prev + 1);
-                  setUsageHistory(prev => [
-                    ...prev,
-                    {
-                      content: lastUserMessageRef.current?.text || '',
-                      inputTokens: usage.inputTokens || 0,
-                      outputTokens: usage.outputTokens || 0,
-                      totalTokens: usage.totalTokens || 0,
-                    },
-                  ]);
-                  addLog(`Token: ${usage.totalTokens} (输入:${usage.inputTokens} 输出:${usage.outputTokens})`);
-                } else {
-                  console.log(`[Client] 收到未处理的JSON类型:`, json.type, '完整数据:', JSON.stringify(json));
-                }
-              } catch (e) {
-                console.error('Error parsing SSE message:', e);
-              }
-            }
-          }
-        }
-
-        await new Promise(requestAnimationFrame);
-      }
-
-      console.log('[Client] 设置所有消息为非流式状态');
-      updateMessages((prev) => {
-        console.log('[Client] 当前消息数:', prev.length);
-        console.log('[Client] 检查文件附件:', prev.map((msg) => ({ hasFiles: !!msg.files, fileCount: msg.files?.length || 0 })));
-        return prev.map((msg) => ({
-          ...msg,
+      await streamController.start('/api/llm', formData, userMessage, { text: inputText, files: selectedFiles });
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') {
+        console.error('Error sending message:', error);
+        appendMessage({
+          role: 'ASSISTANT',
+          content: 'Sorry, I encountered an error. Please try again.',
+          messageType: 'content',
           isStreaming: false,
-          files: msg.files
-        }));
-      });
-      setCurrentStatus(null);
-      scrollToBottom(true);
-      addLog('Completed');
+          timestamp: Date.now(),
+        });
+        addLog('Error');
+      }
+    } finally {
+      setConversationIsLoading(false);
+      if (selectedFiles.length > 0) {
+        setSelectedFiles([]);
+      }
 
       if (conversations.length > 0 && currentConversationId) {
-        const hasTitle = conversations.find(c => c.id === currentConversationId)?.title && conversations.find(c => c.id === currentConversationId)?.title !== 'New Conversation';
+        const hasTitle = conversations.find(c => c.id === currentConversationId)?.title &&
+          conversations.find(c => c.id === currentConversationId)?.title !== 'New Conversation';
         if (!hasTitle) {
           const preview = (userMessage.content || '[Attachment]').slice(0, 30);
           await updateConversation(currentConversationId, { title: preview || 'Conversation' });
         }
       }
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        console.log('[Client] 请求已被用户停止');
-        addLog('Stopped');
-      } else {
-        console.error('Error sending message:', error);
-        updateMessages((prev) => {
-          const errorMsg: Message = {
-            role: 'ASSISTANT',
-            content: 'Sorry, I encountered an error. Please try again.',
-            messageType: 'content',
-            isStreaming: false,
-            timestamp: Date.now(),
-          };
-          return [...prev, errorMsg];
-        });
-        addLog('Error');
-      }
-    } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
-      if (selectedFiles.length > 0) {
-        setSelectedFiles([]);
-      }
     }
-  }, [input, currentMessages, scrollToBottom, addLog, conversations, currentConversationId, selectedFiles, currentModel, updateConversation]);
+  }, [streamMessages, selectedFiles, currentConversationId, currentModel, appendMessage, addLog, conversations, updateConversation, streamController, setLastUserMessage, startStreaming]);
 
   const handleSendFiles = useCallback((files: File[]) => {
     console.log('[Client] 处理文件上传:', files);
@@ -486,21 +386,16 @@ export default function LLMConversationPage() {
   }, [addLog]);
 
   const handleStop = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      console.log('[Client] 已发送停止信号');
-      addLog('Stopped by user');
-    }
-    setIsLoading(false);
-    updateMessages((prev) => prev.map((msg) => ({
-      ...msg,
-      isStreaming: false
-    })));
-  }, [addLog, updateMessages]);
+    streamController.stop();
+    setConversationIsLoading(false);
+    updateMessages(prev => prev.map((msg) => ({ ...msg, isStreaming: false })));
+    addLog('Stopped by user');
+  }, [streamController, updateMessages, addLog]);
 
   const handleRegenerate = useCallback(() => {
-    if (lastUserMessageRef.current) {
-      const { text, files } = lastUserMessageRef.current;
+    const lastMsg = getLastUserMessage();
+    if (lastMsg) {
+      const { text, files } = lastMsg;
       updateMessages((prev) => {
         const newMessages = [...prev];
         while (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'ASSISTANT') {
@@ -516,112 +411,42 @@ export default function LLMConversationPage() {
         }, 0);
       }
     }
-  }, [handleSend, updateMessages, setSelectedFiles, setInput]);
+  }, [handleSend, updateMessages, setSelectedFiles, setInput, getLastUserMessage]);
 
   const handleSearchChange = useCallback((query: string) => {
     setSearchQuery(query);
     if (query.trim()) {
-      const index = currentMessages.findIndex(m =>
-        m.content.toLowerCase().includes(query.toLowerCase())
+      const index = streamMessages.findIndex((msg) =>
+        msg.content.toLowerCase().includes(query.toLowerCase())
       );
       setHighlightedMessageIndex(index >= 0 ? index : null);
     } else {
       setHighlightedMessageIndex(null);
     }
-  }, [currentMessages]);
-
-  const handleModelChange = useCallback((modelValue: string) => {
-    setCurrentModel(modelValue);
-    console.log(modelValue);
-    addLog(`Switched model to: ${modelValue}`);
-
-    // Update model context limits when model changes
-    const modelConfig = availableModels.find(m => m.model === modelValue);
-    if (modelConfig) {
-      setModelContextLimits({
-        maxInputTokens: modelConfig.maxInputTokens,
-        maxOutputTokens: modelConfig.maxOutputTokens,
-      });
-    }
-  }, [addLog]);
-
-  const handleCreateBranch = useCallback((messageIndex: number) => {
-    const message = currentMessages[messageIndex];
-    if (!message) return;
-
-    const branchId = `branch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const newBranch = {
-      id: branchId,
-      name: `分支 ${branches.length + 1}`,
-      createdAt: Date.now()
-    };
-
-    setBranches(prev => [...prev, newBranch]);
-    setCurrentBranchId(branchId);
-
-    const messagesUpToSelected = currentMessages.slice(0, messageIndex + 1);
-    const newMessages = messagesUpToSelected.map(msg => ({
-      ...msg,
-      branchId: branchId
-    }));
-
-    setCurrentMessages(newMessages);
-    addLog(`Created branch ${branchId} from message ${messageIndex}`);
-  }, [currentMessages, branches, addLog, setCurrentMessages]);
-
-  const handleSwitchBranch = useCallback((branchId: string) => {
-    setCurrentBranchId(branchId);
-    addLog(`Switched to branch ${branchId}`);
-  }, [addLog]);
+  }, [streamMessages]);
 
   const handleExport = useCallback((format: 'markdown' | 'json') => {
-    const convTitle = conversations.find(c => c.id === currentConversationId)?.title || 'conversation';
-    let content: string;
-    let filename: string;
-    let mimeType: string;
+    if (!currentConversationId) return;
+
+    const conv = conversations.find(c => c.id === currentConversationId);
+    const title = conv?.title || 'conversation';
+
+    let content = '';
+    let filename = '';
 
     if (format === 'markdown') {
-      const lines = [`# ${convTitle}\n\n`];
-      currentMessages.forEach((msg, idx) => {
-        const role = msg.role === 'USER' ? 'User' : 'Assistant';
-        const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString() : '';
-        lines.push(`## ${role} (${time})\n\n`);
-        lines.push(`${msg.content}\n\n`);
-        if (msg.attachments && msg.attachments.length > 0) {
-          msg.attachments.forEach(f => {
-            if (f.type === 'image') {
-              lines.push(`![${f.name}](${f.name})\n\n`);
-            } else {
-              lines.push(`**${f.name}**:\n\`\`\`\n${f.content || ''}\n\`\`\`\n\n`);
-            }
-          });
-        }
-      });
-      content = lines.join('');
-      filename = `${convTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')}.md`;
-      mimeType = 'text/markdown';
+      content = streamMessages.map((msg) => {
+        const role = msg.role === 'USER' ? '**User**' : '**Assistant**';
+        const type = msg.messageType ? ` (${msg.messageType})` : '';
+        return `${role}${type}:\n${msg.content}\n`;
+      }).join('\n---\n\n');
+      filename = `${title}.md`;
     } else {
-      const exportData = {
-        title: convTitle,
-        exportedAt: new Date().toISOString(),
-        messages: currentMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          timestamp: msg.timestamp,
-          messageType: msg.messageType,
-          files: msg.files?.map(f => ({
-            name: f.name,
-            type: f.type,
-            content: f.type === 'image' ? '[Image Data]' : f.content,
-          })),
-        })),
-      };
-      content = JSON.stringify(exportData, null, 2);
-      filename = `${convTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')}.json`;
-      mimeType = 'application/json';
+      content = JSON.stringify(streamMessages, null, 2);
+      filename = `${title}.json`;
     }
 
-    const blob = new Blob([content], { type: mimeType });
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -630,67 +455,73 @@ export default function LLMConversationPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    addLog(`Exported conversation as ${format.toUpperCase()}`);
-  }, [currentMessages, conversations, currentConversationId, addLog]);
+    addLog(`Exported conversation as ${format}`);
+  }, [currentConversationId, conversations, streamMessages, addLog]);
+
+  const handleAddBranch = useCallback(() => {
+    const newBranchId = `branch-${Date.now()}`;
+    setBranches(prev => [...prev, { id: newBranchId, name: `分支 ${prev.length + 1}`, createdAt: Date.now() }]);
+    setCurrentBranchId(newBranchId);
+    addLog(`Created branch: ${newBranchId}`);
+  }, [addLog]);
+
+  const handleBranchSelect = useCallback((branchId: string) => {
+    setCurrentBranchId(branchId);
+    addLog(`Switched to branch: ${branchId}`);
+  }, [addLog]);
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-var(--header-h,10rem))] overflow-hidden bg-background">
+    <div className="flex h-screen bg-gray-50">
       <div className="w-[280px] h-full flex-shrink-0">
         <ConversationSidebar
           conversations={conversations}
-          currentId={currentConversationId || ''}
+          currentId={currentConversationId ?? ''}
           onSelect={selectConversation}
           onNew={createNewConversation}
           onDelete={handleDeleteConversation}
           onRename={handleRenameConversation}
-          loading={conversations.length === 0 && storeLoading}
+          loading={convStoreLoading}
         />
       </div>
 
       <div className="flex-1 h-full flex flex-col min-w-0">
-        {(isShowWelcome && currentMessages.length === 0) ? (
-          <WelcomeCard onQuickAction={handleQuickAction} />
+        {isShowWelcome ? (
+          <WelcomeCard onQuickAction={action => handleQuickAction(action)} />
         ) : (
           <ChatArea
-            title={conversations.find(c => c.id === currentConversationId)?.title || '对话'}
-            messages={currentMessages}
-            isLoading={isLoading}
+            messages={streamMessages}
             input={input}
             onSend={handleSend}
-            onStop={handleStop}
-            onRegenerate={handleRegenerate}
-            messagesEndRef={messagesEndRef}
             onFilesChange={handleSendFiles}
+            isLoading={conversationLoading || isStreaming}
             currentStatus={currentStatus}
             searchQuery={searchQuery}
             onSearchChange={handleSearchChange}
             highlightedMessageIndex={highlightedMessageIndex}
             onExport={handleExport}
-            showUploadBackground={showUploadBackground}
+            onStop={handleStop}
+            onRegenerate={handleRegenerate}
+            messagesEndRef={messagesEndRef}
+            branches={branches}
+            currentBranchId={currentBranchId}
           />
         )}
       </div>
-
       <div className="w-[300px] h-full flex-shrink-0">
         <AgentToolPanel
-          logs={logs}
-          onInsertPrompt={handleInsertPrompt}
           currentModel={currentModel}
           onModelChange={handleModelChange}
-          tokenUsage={currentTokenUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }}
+          availableModels={availableModels.map(m => ({ id: m.model, name: m.name, maxInputTokens: m.maxInputTokens, maxOutputTokens: m.maxOutputTokens }))}
+          tokenUsage={currentTokenUsage ?? undefined}
           conversationUsage={conversationTokenUsage}
           requestCount={requestCount}
           usageHistory={usageHistory}
-          availableModels={availableModels.map(model => ({
-            id: `${model.model}`,
-            name: model.name,
-            description: `${model.model}`,
-            maxInputTokens: model.maxInputTokens,
-            maxOutputTokens: model.maxOutputTokens,
-          }))}
           modelContextLimits={modelContextLimits}
+          logs={logs}
+          onInsertPrompt={handleInsertPrompt}
         />
       </div>
+
     </div>
   );
 }

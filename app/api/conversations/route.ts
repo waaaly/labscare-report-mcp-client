@@ -45,9 +45,11 @@ export async function POST(request: NextRequest) {
       reportId,
     });
 
+    const conversation = await contextStore.getConversation(conversationId);
+
     return NextResponse.json({
       success: true,
-      data: { id: conversationId },
+      data: conversation,
     });
   } catch (error) {
     logger.error({ error }, '[Conversations API] 创建对话失败');
