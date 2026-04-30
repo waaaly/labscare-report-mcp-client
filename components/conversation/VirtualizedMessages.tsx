@@ -793,7 +793,7 @@ export function VirtualizedMessages({
                     highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
                   }`}
                 >
-                  <div className="p-4 rounded-lg bg-primary text-primary-foreground relative">
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-violet-500 to-violet-600 text-white shadow-lg shadow-violet-500/20 relative">
                     {(() => {
                       const batchData = parseBatchImportContent(message.content);
                       if (batchData) return <BatchImportBubble {...batchData} />;
@@ -866,7 +866,7 @@ export function VirtualizedMessages({
                   highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
                 }`}
               >
-                <div className="p-4 rounded-lg bg-muted">
+                <div className="p-4 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 shadow-sm">
                   {message.isStreaming ? (
                     (() => {
                       return (
@@ -894,7 +894,7 @@ export function VirtualizedMessages({
         })}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="max-w-[80%] p-4 rounded-lg bg-muted flex items-center">
+            <div className="max-w-[80%] p-4 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 shadow-sm flex items-center">
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
               <span>Thinking...</span>
             </div>
@@ -985,7 +985,7 @@ export function VirtualizedMessages({
                     highlightedMessageIndex === index ? 'ring-2 ring-yellow-400 rounded-lg' : ''
                   }`}
                 >
-                  <div className="p-4 rounded-lg bg-primary text-primary-foreground relative">
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-violet-500 to-violet-600 text-white shadow-lg shadow-violet-500/20 relative">
                     {(() => {
                       const batchData = parseBatchImportContent(message.content);
                       if (batchData) return <BatchImportBubble {...batchData} />;

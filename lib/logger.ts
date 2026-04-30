@@ -42,7 +42,7 @@ export class RequestInspector extends BaseCallbackHandler {
      * anthropropic : llm?.kwargs?.client_options?.baseURL
      */
     logger.info(`🌐 Base URL: ${ llm?.kwargs?.base_url || llm?.kwargs?.client_options?.baseURL || llm?.kwargs?.configuration?.baseURL || 'default'}`);
-    console.log(llm?.kwargs,123);
+    // console.log(llm?.kwargs,123);
     // 打印发送的消息列表 (重点检查这里是否有巨大的 Base64)
     if (extraParams?.invocation_params?.messages) {
       logger.info("Messages Count:", extraParams.invocation_params.messages.length);

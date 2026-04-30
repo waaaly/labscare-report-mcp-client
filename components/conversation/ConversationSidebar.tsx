@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,38 +42,31 @@ type Props = {
   onRename: (id: string, newTitle: string) => void;
 };
 
-export default function ConversationSidebar({
-  conversations,
+const ConversationItem = ({
+  conversation,
   currentId,
+  editingId,
+  editingTitle,
   onSelect,
-  onNew,
+  onStartEdit,
+  onEditingTitleChange,
+  onSaveEdit,
+  onCancelEdit,
   onDelete,
-  onRename,
-}: Props) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const filteredConversations = conversations.filter((c) =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const groupedConversations = {
-    today: filteredConversations.filter(
-      (c) => new Date(c.createdAt).toDateString() === new Date().toDateString()
-    ),
-    yesterday: filteredConversations.filter((c) => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      return new Date(c.createdAt).toDateString() === yesterday.toDateString();
-    }),
-    older: filteredConversations.filter((c) => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      return new Date(c.createdAt) < yesterday;
-    }),
-  };
+}: {
+  conversation: Conversation;
+  currentId: string;
+  editingId: string | null;
+  editingTitle: string;
+  onSelect: (id: string) => void;
+  onStartEdit: (c: Conversation) => void;
+  onEditingTitleChange: (title: string) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: (id: string) => void;
+}) => {
+  const isEditing = editingId === conversation.id;
+  const isSelected = conversation.id === currentId;
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -89,6 +82,191 @@ export default function ConversationSidebar({
     if (diffDays < 7) return `${diffDays} 天前`;
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   };
+
+  const handleSave = () => {
+    if (editingTitle.trim()) {
+      onSaveEdit();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSave();
+    if (e.key === 'Escape') onCancelEdit();
+  };
+
+  return (
+    <div
+      key={conversation.id}
+      className={cn(
+        'group relative rounded-xl transition-all duration-200 cursor-pointer',
+        isSelected
+          ? 'bg-gradient-to-r from-violet-500/10 to-cyan-500/10 border border-violet-200 dark:border-violet-800'
+          : 'hover:bg-muted/60'
+      )}
+    >
+      {/* 使用 div 替代外层 button，避免嵌套 button */}
+      <div
+        onClick={() => !editingId && onSelect(conversation.id)}
+        className="w-full text-left p-3"
+      >
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={editingTitle}
+              onChange={(e) => {
+                e.stopPropagation();
+                onEditingTitleChange(e.target.value);
+              }}
+              onKeyDown={handleKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              className="h-8 text-sm"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSave();
+              }}
+              className="h-8 w-8 p-2 rounded-md hover:bg-muted transition-colors"
+            >
+              <Check className="h-3 w-3 text-green-600" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelEdit();
+              }}
+              className="h-8 w-8 p-2 rounded-md hover:bg-muted transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                'p-1.5 rounded-lg shrink-0 mt-0.5',
+                isSelected
+                  ? 'bg-violet-500/20'
+                  : 'bg-muted group-hover:bg-muted-foreground/10'
+              )}
+            >
+              <MessageSquare
+                className={cn(
+                  'h-3.5 w-3.5',
+                  isSelected ? 'text-violet-600' : 'text-muted-foreground'
+                )}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={cn(
+                    'font-medium text-sm truncate',
+                    isSelected ? 'text-violet-700 dark:text-violet-300' : ''
+                  )}
+                >
+                  {conversation.title || '新对话'}
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {formatTime(conversation.createdAt)}
+                </span>
+              </div>
+              {conversation.preview && (
+                <p className="text-xs text-muted-foreground truncate mt-1">
+                  {conversation.preview}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 操作按钮 */}
+      {!isEditing && (
+        <div
+          className={cn(
+            'absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-background/95 backdrop-blur border shadow-sm',
+            'opacity-0 group-hover:opacity-100 transition-opacity'
+          )}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartEdit(conversation);
+            }}
+            className="h-6 w-6 p-1.5 rounded-md hover:bg-muted transition-colors"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(conversation.id);
+            }}
+            className="h-6 w-6 p-1.5 rounded-md hover:bg-muted text-destructive transition-colors"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default function ConversationSidebar({
+  conversations,
+  currentId,
+  onSelect,
+  onNew,
+  onDelete,
+  onRename,
+}: Props) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery) return conversations;
+    const lowerQuery = searchQuery.toLowerCase();
+    return conversations.filter((c) =>
+      c.title.toLowerCase().includes(lowerQuery)
+    );
+  }, [conversations, searchQuery]);
+
+  const groupedConversations = useMemo(() => {
+    // 获取今天的开始时间（00:00:00）
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartTs = todayStart.getTime();
+
+    // 获取昨天的开始时间
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const yesterdayStartTs = yesterdayStart.getTime();
+
+    // 获取前天的开始时间（用于判断 older）
+    const dayBeforeYesterdayStart = new Date(todayStart);
+    dayBeforeYesterdayStart.setDate(dayBeforeYesterdayStart.getDate() - 2);
+    const dayBeforeYesterdayStartTs = dayBeforeYesterdayStart.getTime();
+
+    return {
+      today: filteredConversations.filter(
+        (c) => c.createdAt >= todayStartTs
+      ),
+      yesterday: filteredConversations.filter(
+        (c) => c.createdAt >= yesterdayStartTs && c.createdAt < todayStartTs
+      ),
+      older: filteredConversations.filter(
+        (c) => c.createdAt < yesterdayStartTs
+      ),
+    };
+  }, [filteredConversations]);
 
   const handleStartEdit = (c: Conversation) => {
     setEditingId(c.id);
@@ -115,116 +293,8 @@ export default function ConversationSidebar({
     }
   };
 
-  const renderConversationItem = (c: Conversation) => (
-    <div
-      key={c.id}
-      className={cn(
-        'group relative rounded-xl transition-all duration-200 cursor-pointer',
-        c.id === currentId
-          ? 'bg-gradient-to-r from-violet-500/10 to-cyan-500/10 border border-violet-200 dark:border-violet-800'
-          : 'hover:bg-muted/60'
-      )}
-    >
-      <button
-        onClick={() => !editingId && onSelect(c.id)}
-        className="w-full text-left p-3"
-        disabled={editingId !== null}
-      >
-        {editingId === c.id ? (
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <Input
-              value={editingTitle}
-              onChange={(e) => setEditingTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveEdit();
-                if (e.key === 'Escape') handleCancelEdit();
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="h-8 text-sm"
-              autoFocus
-            />
-            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={handleSaveEdit}>
-              <Check className="h-3 w-3 text-green-600" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={handleCancelEdit}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-start gap-3">
-            <div
-              className={cn(
-                'p-1.5 rounded-lg shrink-0 mt-0.5',
-                c.id === currentId
-                  ? 'bg-violet-500/20'
-                  : 'bg-muted group-hover:bg-muted-foreground/10'
-              )}
-            >
-              <MessageSquare
-                className={cn(
-                  'h-3.5 w-3.5',
-                  c.id === currentId ? 'text-violet-600' : 'text-muted-foreground'
-                )}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className={cn(
-                    'font-medium text-sm truncate',
-                    c.id === currentId ? 'text-violet-700 dark:text-violet-300' : ''
-                  )}
-                >
-                  {c.title || '新对话'}
-                </span>
-                <span className="text-xs text-muted-foreground shrink-0">
-                  {formatTime(c.createdAt)}
-                </span>
-              </div>
-              {c.preview && (
-                <p className="text-xs text-muted-foreground truncate mt-1">{c.preview}</p>
-              )}
-            </div>
-          </div>
-        )}
-      </button>
-
-      {/* 操作按钮 */}
-      {editingId !== c.id && (
-        <div
-          className={cn(
-            'absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-background/95 backdrop-blur border shadow-sm',
-            'opacity-0 group-hover:opacity-100 transition-opacity'
-          )}
-        >
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleStartEdit(c);
-            }}
-          >
-            <Pencil className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6 text-destructive hover:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteId(c.id);
-            }}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-
   const renderGroup = (title: string, items: Conversation[]) => {
+    console.log(groupedConversations);
     if (items.length === 0) return null;
     return (
       <div className="space-y-1">
@@ -237,7 +307,23 @@ export default function ConversationSidebar({
             {items.length}
           </span>
         </div>
-        <div className="space-y-1 px-2">{items.map(renderConversationItem)}</div>
+        <div className="space-y-1 px-2">
+          {items.map((conversation) => (
+            <ConversationItem
+              key={conversation.id}
+              conversation={conversation}
+              currentId={currentId}
+              editingId={editingId}
+              editingTitle={editingTitle}
+              onSelect={onSelect}
+              onStartEdit={handleStartEdit}
+              onEditingTitleChange={setEditingTitle}
+              onSaveEdit={handleSaveEdit}
+              onCancelEdit={handleCancelEdit}
+              onDelete={setDeleteId}
+            />
+          ))}
+        </div>
       </div>
     );
   };
@@ -308,7 +394,10 @@ export default function ConversationSidebar({
       </Card>
 
       {/* 删除确认 Dialog */}
-      <Dialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <Dialog
+        open={deleteId !== null}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>删除对话</DialogTitle>

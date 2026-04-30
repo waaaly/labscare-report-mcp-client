@@ -41,6 +41,6 @@ next-env.d.ts
 temp/*
 
 debug.log
-
+typecheck.log
 #workbuddy
 .workbuddy/

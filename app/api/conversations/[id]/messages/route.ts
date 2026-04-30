@@ -8,10 +8,10 @@ import { logger } from '@/lib/logger';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = params;
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : undefined;
     const offset = parseInt(searchParams.get('offset') || '0', 10);
@@ -27,7 +27,7 @@ export async function GET(
       data: messages,
     });
   } catch (error) {
-    logger.error({ error }, `[Messages API] 获取消息失败: ${params.id}`);
+    logger.error({ error }, `[Messages API] 获取消息失败: ${id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch messages' },
       { status: 500 }
@@ -41,10 +41,10 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = params;
     const body = await request.json();
     const { role, content, contentType, messageType, attachments, metadata } = body;
 
@@ -62,7 +62,7 @@ export async function POST(
       data: message,
     });
   } catch (error) {
-    logger.error({ error }, `[Messages API] 添加消息失败: ${params.id}`);
+    logger.error({ error }, `[Messages API] 添加消息失败: ${id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to add message' },
       { status: 500 }
@@ -76,10 +76,10 @@ export async function POST(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = params;
     await contextStore.clearMessages(id);
 
     return NextResponse.json({
@@ -87,7 +87,7 @@ export async function DELETE(
       message: 'Messages cleared successfully',
     });
   } catch (error) {
-    logger.error({ error }, `[Messages API] 清空消息失败: ${params.id}`);
+    logger.error({ error }, `[Messages API] 清空消息失败: ${id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to clear messages' },
       { status: 500 }

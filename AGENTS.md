@@ -23,7 +23,7 @@
 ### 做事中
 
 - [ ] 一次只做一个功能，不同时推进多个
-- [ ] 根据当前任务，查询项目根目录下.agent/ 目录下的可用 skill
+- [ ] 根据当前任务，查询项目根目录下.agents/skills/ 目录下的可用 skill 文件
 - [ ] 每次修改后运行对应的验证命令
 - [ ] 记录每一步的证据（输出、截图、日志）
 - [ ] 如果验证失败，先修基础状态再继续
@@ -63,6 +63,8 @@ d:/rocky-work/labscare-report-mcp-client
 ### 标准验证命令
 ```bash
 # TypeScript 类型检查
+# 在确保 npm run typecheck运行完成后，检查根目录下的typecheck.log文件
+# 在该文件中获取详细的类型检查错误信息
 npm run typecheck
 
 # ESLint 检查
@@ -75,6 +77,7 @@ npm run dev
 npm run worker:dev
 ```
 ## 何时调用何种skill
+以下提到的skill，均在项目根目录.agents/skills/下。
 
 ## brainstorming
 - 当需要帮助将想法转化为完整的设计和规格，调用此 skill。
@@ -86,6 +89,7 @@ npm run worker:dev
 - Reviewing code for performance issues
 - Refactoring existing React/Next.js code
 - Optimizing bundle size or load times
+- 只要编写涉及到ts,tsx文件
 
 ### ui-ux-pro-max
 - 当任务涉及用户界面结构、视觉设计决策、交互模式或用户体验质量控制时，应该使用此技能

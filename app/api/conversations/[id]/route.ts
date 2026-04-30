@@ -10,10 +10,10 @@ import { Message } from '@prisma/client';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = params;
     const { searchParams } = new URL(request.url);
     const includeMessages = searchParams.get('messages') !== 'false';
 
@@ -41,7 +41,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    logger.error({ error }, `[Conversations API] 获取对话失败: ${params.id}`);
+    logger.error({ error }, `[Conversations API] 获取对话失败: ${id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch conversation' },
       { status: 500 }
@@ -55,10 +55,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = params;
     const body = await request.json();
     const { title, model, labId, projectId, reportId } = body;
 
@@ -77,7 +77,7 @@ export async function PATCH(
       data: conversation,
     });
   } catch (error) {
-    logger.error({ error }, `[Conversations API] 更新对话失败: ${params.id}`);
+    logger.error({ error }, `[Conversations API] 更新对话失败: ${id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to update conversation' },
       { status: 500 }
@@ -91,10 +91,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = params;
     await contextManager.deleteConversation(id);
 
     return NextResponse.json({
@@ -102,7 +102,7 @@ export async function DELETE(
       message: 'Conversation deleted successfully',
     });
   } catch (error) {
-    logger.error({ error }, `[Conversations API] 删除对话失败: ${params.id}`);
+    logger.error({ error }, `[Conversations API] 删除对话失败: ${id}`);
     return NextResponse.json(
       { success: false, error: 'Failed to delete conversation' },
       { status: 500 }
