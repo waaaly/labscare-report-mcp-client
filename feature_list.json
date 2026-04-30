@@ -273,6 +273,24 @@
       "notes": "使用 @modelcontextprotocol/sdk"
     }
   ],
-  "last_updated": "2026-04-22T12:59:00+08:00",
-  "updated_by": "Harness Engineering Setup"
+  {
+      "id": "llm-normalizer-pipeline",
+      "priority": 1,
+      "area": "llm",
+      "title": "LLM 归一化 SSE 流水线",
+      "user_visible_behavior": "所有模型（OpenAI/DeepSeek/Gemini/Anthropic/OpenRouter）的流式输出经过统一归一化层，标准化为 thought / content / tool_call / status / metrics 事件后通过 SSE 推送前端，assistantContent 不再丢失。",
+      "status": "passing",
+      "verification": [
+        "1. npm run typecheck 通过，typecheck.log 0 错误",
+        "2. 各模型 reasoning 字段（reasoning_content / thinking / thought / rationale）均能正确提取为 thought 事件",
+        "3. Anthropic / Gemini content block 数组能正确提取文本，assistantContent 不为空字符串",
+        "4. tool_call 事件正确携带 tool name",
+        "5. route.ts streaming 核心从 ~100 行缩减，逻辑无散落"
+      ],
+      "evidence": "- 新增 lib/llm/normalizer.ts：normalizeMessageChunk() 统一所有厂商字段\n- 新增 lib/llm/assistant-accumulator.ts：分字段累积 content + reasoning，修复 assistantContent 丢失\n- 新增 lib/llm/sse-serializer.ts：encodeSSE() 统一 SSE 序列化，TextEncoder 模块级单例\n- 重构 app/api/llm/route.ts：streaming 核心替换为三层管道，~100 行缩减为 ~30 行\n- npm run typecheck 通过，0 错误",
+      "notes": "新增文件：lib/llm/normalizer.ts, lib/llm/assistant-accumulator.ts, lib/llm/sse-serializer.ts；重构：app/api/llm/route.ts"
+    }
+  ],
+  "last_updated": "2026-04-30T14:12:00+08:00",
+  "updated_by": "Harness Engineering"
 }
