@@ -172,6 +172,160 @@ The app will be available at `http://localhost:3000`.
 
 ## Key Features
 
+### AI Agent Context System (核心亮点)
+
+系统实现了**分层上下文管理系统**，专为AI Agent对话场景设计，结合PostgreSQL完整存储与LLM窗口截断策略，实现高效、可扩展的会话管理。
+
+#### 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Agent Context System                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐    ┌─────────────────┐    ┌────────────┐  │
+│  │  LangChain   │───▶│ ContextManager  │───▶│ ContextStore│  │
+│  │   Agent      │    │   (会话控制器)    │    │  (PG存储层) │  │
+│  └──────────────┘    └─────────────────┘    └────────────┘  │
+│                             │                    │          │
+│                             ▼                    ▼          │
+│                    ┌─────────────────┐    ┌────────────┐    │
+│                    │ Token窗口截断    │    │  PostgreSQL│    │
+│                    │ (maxMessages)   │    │  持久化存储 │    │
+│                    └─────────────────┘    └────────────┘    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 核心组件
+
+**1. ContextStore (上下文存储层)**
+- 基于Prisma ORM的PostgreSQL操作封装
+- 对话CRUD：`createConversation`, `getConversation`, `updateConversation`, `deleteConversation`, `listConversations`
+- 消息管理：`addMessage`, `addToolMessage`, `addSystemMessage`, `getMessages`, `clearMessages`
+- Token统计：自动追踪`inputTokens`, `outputTokens`, `totalTokens`
+- 附件支持：图片、JSON、Markdown等文件类型
+
+**2. ContextManager (上下文管理器)**
+- 统一API封装，简化上层调用
+- 消息类型映射：`USER`, `ASSISTANT`, `SYSTEM`, `TOOL`
+- Token窗口管理：自动截断超过`maxMessagesForLLM`的历史消息
+- 附件处理：自动将附件转换为可读文本格式
+- 工具调用追踪：记录`toolName`, `toolInput`, `toolOutput`
+
+**3. ContextChatMessageHistory (LangChain集成)**
+- 实现`BaseChatMessageHistory`接口
+- 与LangChain Agent/Chain无缝集成
+- 消息缓存机制，减少数据库查询
+- 支持流式对话场景
+
+#### 数据模型
+
+```prisma
+model Conversation {
+  id              String    @id @default(cuid())
+  title           String?
+  model           String?   // 使用的LLM模型
+  labId           String?   // 多租户隔离
+  projectId       String?
+  reportId        String?
+  messageCount    Int       @default(0)
+  totalInputTokens   Int    @default(0)
+  totalOutputTokens Int     @default(0)
+  totalTokens     Int       @default(0)
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  messages        Message[]
+}
+
+model Message {
+  id              String    @id @default(cuid())
+  conversationId  String
+  role            MessageRole
+  content         String
+  contentType     String?   @default("text")
+  messageType     String?   // "text", "thought", "tool_call"
+  toolName        String?
+  toolInput       Json?
+  toolOutput      Json?
+  inputTokens     Int?
+  outputTokens    Int?
+  attachments     Json?     // [Attachment]
+  metadata        Json?
+  sequence        Int       // 消息序号
+  createdAt       DateTime  @default(now())
+  conversation    Conversation @relation(...)
+}
+```
+
+#### 消息窗口截断策略
+
+```typescript
+// 当获取上下文时，自动截断旧消息
+async getContextForLLM(conversationId: string): Promise<LangChainMessage[]> {
+  const messages = await contextStore.getMessages(conversationId, {
+    orderBy: 'asc',
+  });
+  
+  // 超过maxMessagesForLLM则截断
+  if (messages.length > this.config.maxMessagesForLLM) {
+    return messages.slice(-this.config.maxMessagesForLLM);
+  }
+  return messages;
+}
+```
+
+#### 使用示例
+
+```typescript
+// 1. 创建对话
+const conversationId = await contextManager.createConversation({
+  title: '报告脚本生成',
+  model: 'gpt-4o',
+  labId: 'lab_xxx',
+  projectId: 'proj_xxx',
+});
+
+// 2. 添加用户消息（带附件）
+await contextManager.addUserMessage(conversationId, '分析这个模板', {
+  attachments: [
+    { name: 'template.png', type: 'image', url: 'https://...' },
+  ],
+});
+
+// 3. 添加AI回复
+await contextManager.addAssistantMessage(conversationId, '我来分析...');
+
+// 4. 添加工具调用记录
+await contextManager.addToolMessage(
+  conversationId,
+  'getPlaceholderInfo',
+  { templateId: 'tpl_001' },
+  { placeholders: ['name', 'date', 'result'] }
+);
+
+// 5. 获取LLM上下文（自动截断）
+const context = await contextManager.getContextForLLM(conversationId);
+
+// 6. LangChain集成
+const history = await createContextMessageHistory(conversationId);
+const agent = new RunnableWithMessageHistory(...);
+```
+
+#### 核心优势
+
+| 特性 | 说明 |
+|------|------|
+| **完整存储** | 所有消息持久化到PostgreSQL，支持历史回溯 |
+| **多租户隔离** | 基于`labId`的独立数据空间 |
+| **Token追踪** | 自动统计Token使用量，便于成本控制 |
+| **智能截断** | LLM窗口管理，避免超出Token限制 |
+| **工具调用追踪** | 完整的Agent行为审计日志 |
+| **附件支持** | 图片、JSON等附件与消息关联存储 |
+| **LangChain Ready** | 无缝集成LangChain Agent生态 |
+| **消息缓存** | 减少重复数据库查询，提升性能 |
+
 ### AI Conversation Interface
 
 The `/conversation` page provides a full-featured chat UI with:
