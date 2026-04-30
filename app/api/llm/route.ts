@@ -22,18 +22,17 @@ export async function POST(request: NextRequest) {
     logger.info('2. FormData 解析耗时:'+ (Date.now() - t_before_form) + ' ms');
     
     const prompt = (formData.get('prompt') as string) || '';
-    const contextJson = (formData.get('contextJson') as string) || '';
-    const messagesJson = (formData.get('messagesJson') as string) || null;
+    const contextJson = (formData.get('contextJson') as any) || {};
     const model = (formData.get('model') as string) || 'gpt-4o';
     const files = (formData.getAll('files') as File[]) || [];
-    const conversationId = (formData.get('conversationId') as string) || null;
+    const conversationId = contextJson?.conversationId || null ;
 
     // ========== 上下文系统集成 ==========
     let currentConversationId = conversationId;
     
     // 如果没有提供 conversationId，创建新对话
     if (!currentConversationId) {
-      const contextData = contextJson ? JSON.parse(contextJson) : {};
+      const contextData = contextJson;
       currentConversationId = await contextManager.createConversation({
         title: prompt.slice(0, 50) || '新对话',
         model,
@@ -47,7 +46,7 @@ export async function POST(request: NextRequest) {
     // 构建用户消息内容
     let userText = prompt || '';
     if (contextJson) {
-      userText += `\n\n[Context]\n\`\`\`json\n${contextJson}\n\`\`\`\n`;
+      logger.debug(`[Context] JSON: ${contextJson}`);
     }
 
     // 🔧 优化1：合并文件处理，避免重复读取文件

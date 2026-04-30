@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -24,14 +25,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-type Conversation = {
-  id: string;
-  title: string;
-  createdAt: number;
-  messageCount?: number;
-  preview?: string;
-};
+import { Conversation } from '@/store/conversation-store';
 
 type Props = {
   conversations: Conversation[];
@@ -40,6 +34,7 @@ type Props = {
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, newTitle: string) => void;
+  loading?: boolean;
 };
 
 const ConversationItem = ({
@@ -68,7 +63,8 @@ const ConversationItem = ({
   const isEditing = editingId === conversation.id;
   const isSelected = conversation.id === currentId;
 
-  const formatTime = (timestamp: number) => {
+  const formatTime = (timestamp: number | string | undefined) => {
+    if (!timestamp) return '';
     const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -225,6 +221,7 @@ export default function ConversationSidebar({
   onNew,
   onDelete,
   onRename,
+  loading,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -235,7 +232,7 @@ export default function ConversationSidebar({
     if (!searchQuery) return conversations;
     const lowerQuery = searchQuery.toLowerCase();
     return conversations.filter((c) =>
-      c.title.toLowerCase().includes(lowerQuery)
+      (c.title || '').toLowerCase().includes(lowerQuery)
     );
   }, [conversations, searchQuery]);
 
@@ -257,20 +254,20 @@ export default function ConversationSidebar({
 
     return {
       today: filteredConversations.filter(
-        (c) => c.createdAt >= todayStartTs
+        (c) => c.createdAt && new Date(c.createdAt).getTime() >= todayStartTs
       ),
       yesterday: filteredConversations.filter(
-        (c) => c.createdAt >= yesterdayStartTs && c.createdAt < todayStartTs
+        (c) => c.createdAt && new Date(c.createdAt).getTime() >= yesterdayStartTs && new Date(c.createdAt).getTime() < todayStartTs
       ),
       older: filteredConversations.filter(
-        (c) => c.createdAt < yesterdayStartTs
+        (c) => c.createdAt && new Date(c.createdAt).getTime() < dayBeforeYesterdayStartTs
       ),
     };
   }, [filteredConversations]);
 
   const handleStartEdit = (c: Conversation) => {
     setEditingId(c.id);
-    setEditingTitle(c.title);
+    setEditingTitle(c.title || '');
   };
 
   const handleSaveEdit = () => {
@@ -294,7 +291,6 @@ export default function ConversationSidebar({
   };
 
   const renderGroup = (title: string, items: Conversation[]) => {
-    console.log(groupedConversations);
     if (items.length === 0) return null;
     return (
       <div className="space-y-1">
@@ -363,34 +359,50 @@ export default function ConversationSidebar({
         </div>
 
         {/* 对话列表 */}
-        <CardContent className="flex-1 overflow-auto p-2 space-y-2">
-          {filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="p-3 rounded-full bg-muted mb-3">
-                <MessageSquare className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {searchQuery ? '未找到匹配的对话' : '暂无对话记录'}
-              </p>
-              {!searchQuery && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={onNew}
-                  className="mt-2 text-violet-600"
-                >
-                  开始新对话
-                </Button>
-              )}
+        {loading ? (
+          <CardContent className="flex-1 overflow-auto p-2 space-y-2">
+            <div className="space-y-3 px-1">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-xl">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : (
-            <>
-              {renderGroup('今天', groupedConversations.today)}
-              {renderGroup('昨天', groupedConversations.yesterday)}
-              {renderGroup('更早', groupedConversations.older)}
-            </>
-          )}
-        </CardContent>
+          </CardContent>
+        ) : (
+          <CardContent className="flex-1 overflow-auto p-2 space-y-2">
+            {filteredConversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="p-3 rounded-full bg-muted mb-3">
+                  <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {searchQuery ? '未找到匹配的对话' : '暂无对话记录'}
+                </p>
+                {!searchQuery && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={onNew}
+                    className="mt-2 text-violet-600"
+                  >
+                    开始新对话
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+                {renderGroup('今天', groupedConversations.today)}
+                {renderGroup('昨天', groupedConversations.yesterday)}
+                {renderGroup('更早', groupedConversations.older)}
+              </>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {/* 删除确认 Dialog */}

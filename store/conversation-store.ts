@@ -2,33 +2,49 @@ import { create } from 'zustand';
 
 export interface FileAttachment {
   name: string;
-  type: 'image' | 'json' | 'md';
-  content: string;
+  type: 'image' | 'json' | 'md' | 'file';
+  content?: string;
+  url?: string;
+  size?: number;
   preview?: string;
 }
 
 export interface Message {
   id?: string;
-  role: 'user' | 'assistant';
+  conversationId?: string;
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM' | 'TOOL';
   content: string;
+  contentType?: string;
+  messageType?: string | null;
+  toolName?: string | null;
+  toolInput?: Record<string, unknown> | null;
+  toolOutput?: Record<string, unknown> | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  attachments?: FileAttachment[];
+  metadata?: Record<string, unknown>;
+  sequence?: number;
+  createdAt?: string;
   isStreaming?: boolean;
-  messageType?: 'thought' | 'tool_call' | 'status' | 'content';
-  tool?: string;
-  files?: FileAttachment[];
   timestamp?: number;
-  branchId?: string;
-  parentId?: string;
+  files?: FileAttachment[];
 }
 
 export interface Conversation {
   id: string;
-  title: string;
+  title?: string;
   model?: string;
-  labId?: string;
-  projectId?: string;
-  reportId?: string;
-  createdAt: number;
-  updatedAt?: number;
+  labId?: string | null;
+  projectId?: string | null;
+  reportId?: string | null;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  totalTokens?: number;
+  messageCount?: number;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+  messages?: Message[];
   preview?: string;
 }
 
@@ -98,17 +114,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       const response = await fetch('/api/conversations');
       if (!response.ok) throw new Error('Failed to load conversations');
       const result = await response.json();
-      const conversations = result.data.map((conv: any) => ({
-        id: conv.id,
-        title: conv.title,
-        model: conv.model,
-        labId: conv.labId,
-        projectId: conv.projectId,
-        reportId: conv.reportId,
-        createdAt: new Date(conv.createdAt).getTime(),
-        updatedAt: conv.updatedAt ? new Date(conv.updatedAt).getTime() : undefined,
-      }));
-      set({ conversations });
+      set({ conversations: result.data });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load conversations' });
     } finally {
@@ -122,20 +128,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       const response = await fetch(`/api/conversations/${id}?messages=true`);
       if (!response.ok) throw new Error('Failed to load conversation');
       const result = await response.json();
-      const messages = result.data.messages.map((msg: any) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        messageType: msg.messageType,
-        tool: msg.tool,
-        timestamp: msg.createdAt ? new Date(msg.createdAt).getTime() : undefined,
-        files: msg.attachments?.map((att: any) => ({
-          name: att.name,
-          type: att.type,
-          content: att.content,
-        })),
-      }));
-      set({ currentMessages: messages });
+      set({ currentMessages: result.data.messages || [] });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load conversation' });
     } finally {
@@ -153,14 +146,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       });
       if (!response.ok) throw new Error('Failed to create conversation');
       const result = await response.json();
-      const newConversation: Conversation = {
-        id: result.data.id,
-        title,
-        model,
-        createdAt: Date.now(),
-      };
       set((state) => ({
-        conversations: [newConversation, ...state.conversations],
+        conversations: [result.data, ...state.conversations],
         currentConversationId: result.data.id,
         currentMessages: [],
       }));

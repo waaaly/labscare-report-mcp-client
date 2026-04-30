@@ -23,25 +23,9 @@ import React from "react";
 import { prepare, layout } from "@chenglou/pretext";
 import ImageLightbox from "./ImageLightbox";
 import { BatchImportBubble } from "./BatchImportBubble";
+import { Message, type FileAttachment } from "@/store/conversation-store";
 
-export type Msg = {
-  role: "user" | "assistant";
-  content: string;
-  isStreaming?: boolean;
-  messageType?: "thought" | "tool_call" | "status" | "content";
-  tool?: string;
-  files?: FileAttachment[];
-  timestamp?: number;
-  branchId?: string;
-  parentId?: string;
-};
-
-export type FileAttachment = {
-  name: string;
-  type: "image" | "json" | "md";
-  content: string;
-  preview?: string;
-};
+export type Msg = Message;
 
 function parseBatchImportContent(content: string): {
   labName: string;
@@ -396,7 +380,7 @@ const FileAttachment = React.memo(
       file.name,
       file.type,
       "内容长度:",
-      file.content.length,
+      file.content?.length,
     );
 
     if (file.type === "image") {
@@ -404,10 +388,10 @@ const FileAttachment = React.memo(
         <div className="mt-2 rounded-lg overflow-hidden border bg-background group">
           <div className="relative">
             <img
-              src={file.content}
+              src={file.content || ''}
               alt={file.name}
               className="max-w-full h-auto max-h-64 object-contain cursor-zoom-in"
-              onClick={() => onImageClick?.(file.content, file.name)}
+              onClick={() => onImageClick?.(file.content || '', file.name)}
             />
             {/* 放大图标覆盖层 */}
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
@@ -776,14 +760,14 @@ export function VirtualizedMessages({
           />
         )}
         {messages.map((message, index) => {
-          if (message.role === "user") {
+          if (message.role.toLowerCase() === "user") {
             console.log(`[VirtualizedMessages] 渲染用户消息 ${index}:`, {
-              hasFiles: !!message.files,
-              fileCount: message.files?.length || 0,
-              files: message.files?.map((f) => ({
+              hasFiles: !!message.attachments,
+              fileCount: message.attachments?.length || 0,
+              files: message.attachments?.map((f) => ({
                 name: f.name,
                 type: f.type,
-                contentLength: f.content.length,
+                contentLength: f.content?.length || 0,
               })),
             });
             return (
@@ -812,17 +796,17 @@ export function VirtualizedMessages({
                       </button>
                     )}
                   </div>
-                  {message.files && message.files.length > 0 && (
+                  {message.attachments && message.attachments.length > 0 && (
                     <div className="mt-2 space-y-2">
-                      {message.files.map((file, fileIndex) => {
+                      {message.attachments.map((file, fileIndex) => {
                         return <FileAttachment key={fileIndex} file={file} onImageClick={handleImageClick} />;
                       })}
                     </div>
                   )}
-                  {message.timestamp && (
+                  {message.createdAt && (
                     <div className="mt-1 text-xs text-muted-foreground text-right">
-                      <span title={formatMessageTime(message.timestamp).full}>
-                        {formatMessageTime(message.timestamp).short}
+                      <span title={formatMessageTime(new Date(message.createdAt).getTime()).full}>
+                        {formatMessageTime(new Date(message.createdAt).getTime()).short}
                       </span>
                     </div>
                   )}
@@ -968,14 +952,14 @@ export function VirtualizedMessages({
             scheduleBatchMeasurement();
           };
 
-          if (message.role === "user") {
+          if (message.role.toLowerCase() === "user") {
             console.log(`[VirtualizedMessages V] 渲染用户消息 ${index}:`, {
-              hasFiles: !!message.files,
-              fileCount: message.files?.length || 0,
-              files: message.files?.map((f) => ({
+              hasFiles: !!message.attachments,
+              fileCount: message.attachments?.length || 0,
+              files: message.attachments?.map((f) => ({
                 name: f.name,
                 type: f.type,
-                contentLength: f.content.length,
+                contentLength: f.content?.length || 0,
               })),
             });
             return (
@@ -1004,17 +988,17 @@ export function VirtualizedMessages({
                       </button>
                     )}
                   </div>
-                  {message.files && message.files.length > 0 && (
+                  {message.attachments && message.attachments.length > 0 && (
                     <div className="mt-2 space-y-2">
-                      {message.files.map((file, fileIndex) => {
+                      {message.attachments.map((file, fileIndex) => {
                         return <FileAttachment key={fileIndex} file={file} onImageClick={handleImageClick} />;
                       })}
                     </div>
                   )}
-                  {message.timestamp && (
+                  {message.createdAt && (
                     <div className="mt-1 text-xs text-muted-foreground text-right">
-                      <span title={formatMessageTime(message.timestamp).full}>
-                        {formatMessageTime(message.timestamp).short}
+                      <span title={formatMessageTime(new Date(message.createdAt).getTime()).full}>
+                        {formatMessageTime(new Date(message.createdAt).getTime()).short}
                       </span>
                     </div>
                   )}

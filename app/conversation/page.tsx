@@ -122,7 +122,6 @@ export default function LLMConversationPage() {
 
   const handleQuickAction = useCallback(async (action: string) => {
     try {
-      const id = await createConversation('新对话', currentModel);
       setCurrentMessages([]);
       setInput('');
 
@@ -219,7 +218,7 @@ export default function LLMConversationPage() {
     }
 
     const userMessage: Message = {
-      role: 'user',
+      role: 'USER',
       content: inputText.trim(),
       files: fileAttachments.length > 0 ? fileAttachments : undefined,
       timestamp: Date.now(),
@@ -245,15 +244,11 @@ export default function LLMConversationPage() {
     try {
       let response: Response;
       const formData = new FormData();
-      formData.append('prompt', input.trim());
+      formData.append('prompt', inputText.trim());
       formData.append('contextJson', JSON.stringify({ 
         conversationId: currentConversationId, 
         messagesCount: newMessages.length,
       }));
-      const standardMessages = newMessages
-        .filter(msg => !msg.isStreaming && msg.content)
-        .map(msg => ({ role: msg.role, content: msg.content }));
-      formData.append('messagesJson', JSON.stringify(standardMessages));
       formData.append('model', currentModel);
       if (selectedFiles.length > 0) {
         selectedFiles.forEach((file) => {
@@ -307,10 +302,10 @@ export default function LLMConversationPage() {
                   updateMessages((prev) => {
                     const lastMsg = prev[prev.length - 1];
                     let newMessages: Message[];
-                    if (lastMsg?.messageType === 'content' || (lastMsg?.role === 'assistant' && !lastMsg?.messageType)) {
+                    if (lastMsg?.messageType === 'content' || (lastMsg?.role === 'ASSISTANT' && !lastMsg?.messageType)) {
                       newMessages = [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + json.text, messageType: 'content', isStreaming: true }];
                     } else {
-                      newMessages = [...prev, { role: 'assistant', content: json.text, messageType: 'content', isStreaming: true, timestamp: Date.now() }];
+                      newMessages = [...prev, { role: 'ASSISTANT', content: json.text, messageType: 'content', isStreaming: true, timestamp: Date.now() }];
                     }
                     return newMessages;
                   });
@@ -324,12 +319,12 @@ export default function LLMConversationPage() {
                           return updated;
                         }
                       }
-                      return [...prev, { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: false, timestamp: Date.now() }];
+                      return [...prev, { role: 'ASSISTANT', content: json.text, messageType: 'thought', isStreaming: false, timestamp: Date.now() }];
                     });
                   } else {
                     updateMessages((prev) => [
                       ...prev.map(msg => msg.messageType === 'thought' ? { ...msg, isStreaming: false } : msg),
-                      { role: 'assistant', content: json.text, messageType: 'thought', isStreaming: true, timestamp: Date.now() },
+                      { role: 'ASSISTANT', content: json.text, messageType: 'thought', isStreaming: true, timestamp: Date.now() },
                     ]);
                   }
                   console.log(`[Client] 处理thought消息，内容: "${json.text.substring(0, 30)}..."`);
@@ -337,7 +332,7 @@ export default function LLMConversationPage() {
                 } else if (json.type === 'tool_call' && json.message) {
                   updateMessages((prev) => [
                     ...prev,
-                    { role: 'assistant', content: json.message, messageType: 'tool_call', tool: json.tool, isStreaming: true, timestamp: Date.now() },
+                    { role: 'ASSISTANT', content: json.message, messageType: 'tool_call', toolName: json.tool, isStreaming: true, timestamp: Date.now() },
                   ]);
                   console.log(`[Client] 处理tool_call消息，工具: ${json.tool}`);
                   addLog(`Tool Call: ${json.tool}`);
@@ -407,7 +402,7 @@ export default function LLMConversationPage() {
         console.error('Error sending message:', error);
         updateMessages((prev) => {
           const errorMsg: Message = {
-            role: 'assistant',
+            role: 'ASSISTANT',
             content: 'Sorry, I encountered an error. Please try again.',
             messageType: 'content',
             isStreaming: false,
@@ -452,7 +447,7 @@ export default function LLMConversationPage() {
       const { text, files } = lastUserMessageRef.current;
       updateMessages((prev) => {
         const newMessages = [...prev];
-        while (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+        while (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'ASSISTANT') {
           newMessages.pop();
         }
         return newMessages;
@@ -523,16 +518,16 @@ export default function LLMConversationPage() {
     if (format === 'markdown') {
       const lines = [`# ${convTitle}\n\n`];
       currentMessages.forEach((msg, idx) => {
-        const role = msg.role === 'user' ? 'User' : 'Assistant';
-        const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '';
+        const role = msg.role === 'USER' ? 'User' : 'Assistant';
+        const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString() : '';
         lines.push(`## ${role} (${time})\n\n`);
         lines.push(`${msg.content}\n\n`);
-        if (msg.files && msg.files.length > 0) {
-          msg.files.forEach(f => {
+        if (msg.attachments && msg.attachments.length > 0) {
+          msg.attachments.forEach(f => {
             if (f.type === 'image') {
               lines.push(`![${f.name}](${f.name})\n\n`);
             } else {
-              lines.push(`**${f.name}**:\n\`\`\`\n${f.content}\n\`\`\`\n\n`);
+              lines.push(`**${f.name}**:\n\`\`\`\n${f.content || ''}\n\`\`\`\n\n`);
             }
           });
         }
@@ -583,6 +578,7 @@ export default function LLMConversationPage() {
           onNew={createNewConversation}
           onDelete={handleDeleteConversation}
           onRename={handleRenameConversation}
+          loading={conversations.length === 0 && storeLoading}
         />
       </div>
 

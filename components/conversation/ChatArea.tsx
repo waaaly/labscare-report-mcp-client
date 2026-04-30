@@ -304,14 +304,14 @@ export default function ChatArea({
   const visibleMessages = React.useMemo(
     () =>
       messages.filter(
-        (m) => !(m.role === 'assistant' && m.isStreaming && !m.content?.trim()) && m.messageType !== 'status'
+        (m) => !(m.role === 'ASSISTANT' && m.isStreaming && !m.content?.trim()) && m.messageType !== 'status'
       ),
     [messages]
   );
 
   const history = React.useMemo(() => {
     const arr = messages
-      .filter((m) => m.role === 'user' && m.content?.trim())
+      .filter((m) => m.role === 'USER' && m.content?.trim())
       .map((m) => m.content.trim());
     const seen = new Set<string>();
     const uniq: string[] = [];
